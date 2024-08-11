@@ -23,14 +23,14 @@ library(tidyverse)
 ```{r}
 # Define file paths and their corresponding genes
 file_paths <- list(
-  GPX = "C:/Users/Abani/OneDrive - University of Idaho/Documents/Pistachio_results/Pistachio_gene_expression_results/genes/gpx.xlsx",
-  NRF = "C:/Users/Abani/OneDrive - University of Idaho/Documents/Pistachio_results/Pistachio_gene_expression_results/genes/nrf.xlsx",
-  S100 = "C:/Users/Abani/OneDrive - University of Idaho/Documents/Pistachio_results/Pistachio_gene_expression_results/genes/s100.xlsx",
-  SOD = "C:/Users/Abani/OneDrive - University of Idaho/Documents/Pistachio_results/Pistachio_gene_expression_results/genes/sod.xlsx",
-  TNF = "C:/Users/Abani/OneDrive - University of Idaho/Documents/Pistachio_results/Pistachio_gene_expression_results/genes/tnf_a.xlsx",
-  B_ACTIN = "C:/Users/Abani/OneDrive - University of Idaho/Documents/Pistachio_results/Pistachio_gene_expression_results/genes/b_actin.xlsx",
-  CAT = "C:/Users/Abani/OneDrive - University of Idaho/Documents/Pistachio_results/Pistachio_gene_expression_results/genes/cat.xlsx",
-  ELF = "C:/Users/Abani/OneDrive - University of Idaho/Documents/Pistachio_results/Pistachio_gene_expression_results/genes/elf.xlsx"
+  GPX = "~/gpx.xlsx",
+  NRF = "~/nrf.xlsx",
+  S100 = "~/s100.xlsx",
+  SOD = "~/sod.xlsx",
+  TNF = "~/tnf_a.xlsx",
+  B_ACTIN = "~/b_actin.xlsx",
+  CAT = "~/cat.xlsx",
+  ELF = "~/elf.xlsx"
 )
 
 ```
