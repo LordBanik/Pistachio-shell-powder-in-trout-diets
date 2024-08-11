@@ -1,0 +1,195 @@
+---
+title: "Pistachio TAC "
+author: "Mosope Abanikannda"
+date: "`r Sys.Date()`"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+```
+
+```{r}
+suppressMessages({
+library(agricolae)
+library(readr)
+library(readxl)
+library(tidyverse)
+library(cowplot)
+library(multcompView)
+})
+```
+
+
+phenolic
+```{r}
+# Convert Diet to factor
+phenolic <- read_xlsx("~/Pistachio_results/TAC/tac_tpc_diets.xlsx")
+```
+
+```{r}
+head(phenolic)
+```
+
+```{r}
+# Color coding
+unified_colors <- c("FM1" = "#0073C2FF", "FM2" = "#0073C2FF", "FM3" = "#0073C2FF", "FM4" = "#0073C2FF",
+                    "PM1" = "#EFC000FF", "PM2" = "#EFC000FF", "PM3" = "#EFC000FF", "PM4" = "#EFC000FF",
+                    "PIST" = "#86868699")
+```
+
+
+```{r}
+# Bar plot for CRE
+
+# Set the factor levels for Diet
+phenolic$Diet <- factor(phenolic$Diet, levels = c("PIST", "FM1", "FM2", "FM3", "FM4", "PM1", "PM2", "PM3", "PM4"))
+plot_CRE <- ggplot(phenolic, aes(x = Diet, y = CRE, fill = Diet)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = unified_colors) +
+  theme_minimal() +
+  labs(title = "", y = "Total Antioxidant Capacity (CRE)", x = "") +
+  theme(legend.position = "none") +
+  theme_bw() +
+  theme(
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      legend.position = "none",
+      panel.grid = element_blank(),
+      axis.line = element_line(colour = "black"),
+      plot.title = element_text(size = 8)  # Adjust title size
+    )+
+    scale_y_continuous(breaks = seq(0, 3000, by = 100), limits = c(0, 3000))+
+      scale_x_discrete(labels = c("PSP","0 % PSP", "0.5 % PSP", "1 % PSP", "2 % PSP","0 % PSP", "0.5 % PSP", "1 % PSP", "2 % PSP"))
+
+# Bar plot for Conc_pmol_ul
+plot_Conc_pmol_ul <- ggplot(phenolic, aes(x = Diet, y = Conc_pmol_ul, fill = Diet)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = unified_colors) +
+  theme_minimal() +
+  labs(title = "", y = expression("Total Phenolic Compound concentration (pmol /"~mu~"L)"), x = "") +
+  theme(legend.position = "none")+
+  theme_bw() +
+  theme(
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      legend.position = "none",
+      panel.grid = element_blank(),
+      axis.line = element_line(colour = "black"),
+      plot.title = element_text(size = 8)  # Adjust title size
+    )+
+    scale_y_continuous(breaks = seq(0, 500, by = 50), limits = c(0, 500))+
+      scale_x_discrete(labels = c("PSP","0 % PSP", "0.5 % PSP", "1 % PSP", "2 % PSP","0 % PSP", "0.5 % PSP", "1 % PSP", "2 % PSP"))
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+
+# Set the factor levels for Protein in the desired order
+phenolic$Protein <- factor(phenolic$Protein, levels = c("Pistachio Shell Powder", "Fish Meal", "Plant Meal"))
+# Bar plot for CRE
+plot_CRE <- ggplot(phenolic, aes(x = Diet, y = CRE, fill = Protein)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = c("Pistachio Shell Powder" = "#86868699", "Fish Meal" = "#0073C2FF", "Plant Meal" = "#EFC000FF")) +
+  theme_minimal() +
+  labs(title = "", y = "Total Antioxidant Capacity (CRE)", x = "") +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    panel.grid = element_blank(),
+    axis.line = element_line(colour = "black"),
+    plot.title = element_text(size = 8)  # Adjust title size
+  ) +
+  scale_y_continuous(breaks = seq(0, 3000, by = 100), limits = c(0, 3000)) +
+  scale_x_discrete(labels = c("PSP", "0 % PSP", "0.5 % PSP", "1 % PSP", "2 % PSP", "0 % PSP", "0.5 % PSP", "1 % PSP", "2 % PSP"))
+
+# Bar plot for Conc_pmol_ul
+plot_Conc_pmol_ul <- ggplot(phenolic, aes(x = Diet, y = Conc_pmol_ul, fill = Protein)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = c("Pistachio Shell Powder" = "#86868699", "Fish Meal" = "#0073C2FF", "Plant Meal" = "#EFC000FF")) +
+  theme_minimal() +
+  labs(title = "", y = expression("Total Phenolic Compound concentration (pmol /" ~ mu ~ "L)"), x = "") +
+  theme(legend.position = "top") +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    panel.grid = element_blank(),
+    axis.line = element_line(colour = "black"),
+    plot.title = element_text(size = 8)  # Adjust title size
+  ) +
+  scale_y_continuous(breaks = seq(0, 1700, by = 100), limits = c(0, 1700)) +
+  scale_x_discrete(labels = c("PSP", "0 % PSP", "0.5 % PSP", "1 % PSP", "2 % PSP", "0 % PSP", "0.5 % PSP", "1 % PSP", "2 % PSP"))
+
+# Display the plots
+print(plot_CRE)
+print(plot_Conc_pmol_ul)
+```
+
+
+
+
+
+```{r}
+# Combine the plots and the legend
+combined_plot <- plot_grid(
+plot_Conc_pmol_ul + theme(axis.title.x = element_blank(), legend.position = "none"),
+plot_CRE + theme(axis.title.x = element_blank(), legend.position = "none"),
+labels = c("a", "b"), ncol = 2, align = 'v')
+```
+
+
+
+
+
+
+```{r}
+# Extract the legend from one of the plots
+legend <- get_legend(
+  ggplot(phenolic, aes(x = Diet, y = CRE, fill = Protein)) +
+    geom_bar(stat = "identity") +
+    scale_fill_manual(values = c("Pistachio Shell Powder" = "#86868699", "Fish Meal" = "#0073C2FF", "Plant Meal" = "#EFC000FF")) +
+    theme_minimal() +
+    theme(legend.position = "bottom",
+    legend.key.size = unit(0.5, "cm"), # Adjust key size
+    legend.text = element_text(size = 8), # Adjust text size
+    legend.title = element_text(size = 10)) # Adjust title size
+)
+```
+
+
+
+
+
+
+
+
+```{r}
+# Add vertical and horizontal lines to divide the plots into sections and an outer line
+combined_plot_with_lines <- ggdraw(combined_plot) +
+  draw_line(x = c(0, 0), y = c(0, 1), color = "black", size = 1) +      # Outer left line
+  draw_line(x = c(1, 1), y = c(0, 1), color = "black", size = 1) +      # Outer right line
+  draw_line(x = c(0, 1), y = c(0, 0), color = "black", size = 1) +      # Outer bottom line
+  draw_line(x = c(0, 1), y = c(1, 1), color = "black", size = 1)        # Outer top line
+```
+
+
+```{r}
+plot_grid(combined_plot_with_lines, ncol = 2, nrow = 2, rel_heights = c(1, 0.1))
+```
+
+
+

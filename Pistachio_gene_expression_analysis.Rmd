@@ -1,0 +1,1150 @@
+---
+title: "Pistachio Gene expression"
+author: "Mosope Abanikannda"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+```{r}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+```
+
+```{r}
+suppressMessages({
+library(readxl)
+library(ggplot2)
+library(agricolae)
+library(readr)
+library(cowplot)
+library(tidyverse)
+})
+```
+
+
+```{r}
+# Define file paths and their corresponding genes
+file_paths <- list(
+  GPX = "C:/Users/Abani/OneDrive - University of Idaho/Documents/Pistachio_results/Pistachio_gene_expression_results/genes/gpx.xlsx",
+  NRF = "C:/Users/Abani/OneDrive - University of Idaho/Documents/Pistachio_results/Pistachio_gene_expression_results/genes/nrf.xlsx",
+  S100 = "C:/Users/Abani/OneDrive - University of Idaho/Documents/Pistachio_results/Pistachio_gene_expression_results/genes/s100.xlsx",
+  SOD = "C:/Users/Abani/OneDrive - University of Idaho/Documents/Pistachio_results/Pistachio_gene_expression_results/genes/sod.xlsx",
+  TNF = "C:/Users/Abani/OneDrive - University of Idaho/Documents/Pistachio_results/Pistachio_gene_expression_results/genes/tnf_a.xlsx",
+  B_ACTIN = "C:/Users/Abani/OneDrive - University of Idaho/Documents/Pistachio_results/Pistachio_gene_expression_results/genes/b_actin.xlsx",
+  CAT = "C:/Users/Abani/OneDrive - University of Idaho/Documents/Pistachio_results/Pistachio_gene_expression_results/genes/cat.xlsx",
+  ELF = "C:/Users/Abani/OneDrive - University of Idaho/Documents/Pistachio_results/Pistachio_gene_expression_results/genes/elf.xlsx"
+)
+
+```
+
+```{r}
+# Read each file into individual dataframes
+GPX <- read_excel(file_paths$GPX)
+NRF <- read_excel(file_paths$NRF)
+S100 <- read_excel(file_paths$S100)
+SOD <- read_excel(file_paths$SOD)
+TNF <- read_excel(file_paths$TNF)
+B_ACTIN <- read_excel(file_paths$B_ACTIN)
+CAT <- read_excel(file_paths$CAT)
+ELF <- read_excel(file_paths$ELF)
+```
+
+
+```{r}
+# Function to add SampleID column with _rep1 and _rep2 appended for duplicates
+add_sample_id <- function(df) {
+  df %>%
+    group_by(Sample) %>%
+    mutate(SampleID = if_else(row_number() == 1, paste0(Sample, "_rep1"), 
+                              paste0(Sample, "_rep2"))) %>%
+    ungroup()
+}
+
+# Apply the function to each dataframe
+GPX <- add_sample_id(GPX)
+NRF <- add_sample_id(NRF)
+S100 <- add_sample_id(S100)
+SOD <- add_sample_id(SOD)
+TNF <- add_sample_id(TNF)
+B_ACTIN <- add_sample_id(B_ACTIN)
+CAT <- add_sample_id(CAT)
+ELF <- add_sample_id(ELF)
+```
+
+
+
+```{r}
+# Function to select specific columns
+select_columns <- function(df) {
+  df %>%
+    select(SampleID, Well, Target, Content, Sample, `Biological Set Name`, Cq)
+}
+
+# Apply the function to each dataframe
+GPX <- select_columns(GPX)
+NRF <- select_columns(NRF)
+S100 <- select_columns(S100)
+SOD <- select_columns(SOD)
+TNF <- select_columns(TNF)
+B_ACTIN <- select_columns(B_ACTIN)
+CAT <- select_columns(CAT)
+ELF <- select_columns(ELF)
+```
+
+
+```{r}
+# Define a function to rename columns based on gene name
+rename_gene_columns <- function(df, gene_name) {
+  df %>%
+    rename(
+      !!gene_name := Cq,
+      Treatment := `Biological Set Name`
+    )
+}
+
+# Apply the function to each gene data frame
+GPX <- rename_gene_columns(GPX, "GPX_1")
+NRF <- rename_gene_columns(NRF, "NRF_1")
+S100 <- rename_gene_columns(S100, "S100")
+CAT <- rename_gene_columns(CAT, "CAT")
+SOD <- rename_gene_columns(SOD, "SOD")
+TNF <- rename_gene_columns(TNF, "TNF_a")
+ELF <- rename_gene_columns(ELF, "ELF_1a")
+B_ACTIN <- rename_gene_columns(B_ACTIN, "B_actin")
+```
+
+
+```{r}
+# Merge all gene data frames
+merged_data <- GPX %>%
+ full_join(NRF, by = c("SampleID", "Sample", "Treatment")) %>%
+ full_join(S100, by = c("SampleID", "Sample", "Treatment")) %>%
+ full_join(CAT, by = c("SampleID", "Sample", "Treatment")) %>%
+ full_join(SOD, by = c("SampleID", "Sample", "Treatment")) %>%
+ full_join(TNF, by = c("SampleID", "Sample", "Treatment")) %>%
+ full_join(ELF, by = c("SampleID", "Sample", "Treatment")) %>%
+ full_join(B_ACTIN, by = c("SampleID", "Sample", "Treatment"))
+
+# Check the merged data frame
+print(merged_data)
+print(merged_data)
+
+write.csv(merged_data, "merged1_data.csv")
+
+merged_data <- read.csv("~/Pistachio_results/Pistachio_gene_expression_results/genes/merged_data.csv")
+```
+
+```{r}
+merged <- merged_data %>%
+  dplyr::select(SampleID, Sample, Treatment, B_actin, ELF_1a, GPX_1, NRF_1, 
+                S100, TNF_a, CAT, SOD)
+```
+
+
+```{r}
+merged_no_std <- merged %>% 
+  dplyr::filter(Treatment != "Standard")
+```
+
+```{r}
+merged_no_std <- merged_no_std %>%
+  dplyr::mutate(Protein = case_when(
+    grepl("FM", Treatment) ~ "Fish Meal",
+    grepl("PM", Treatment) ~ "Plant Meal",
+    TRUE ~ "Unknown"
+  ))
+
+merged_no_std <- merged_no_std %>%
+  rename(Diet = Treatment)
+
+merged_no_std <- merged_no_std %>% 
+  dplyr::select(SampleID, Sample, Diet, Protein, B_actin, ELF_1a, GPX_1, NRF_1, 
+                CAT, SOD, TNF_a, S100)
+
+# Filter out specific samples
+ merged_no_std <- merged_no_std %>% 
+   filter(!Sample %in% c("T1A", "22C","7B"))
+
+pist_genes <- as.matrix(merged_no_std)
+```
+
+
+#Not removing
+```{r}
+# # Function to remove outliers based on 1.5 IQR
+# remove_outliers <- function(df, col) {
+#  Q1 <- quantile(df[[col]], 0.25, na.rm = TRUE)
+#  Q3 <- quantile(df[[col]], 0.75, na.rm = TRUE)
+#  IQR <- Q3 - Q1
+#  lower_bound <- Q1 - 1.5 * IQR
+#  upper_bound <- Q3 + 1.5 * IQR
+#  df %>% filter(df[[col]] >= lower_bound & df[[col]] <= upper_bound)
+# }
+# 
+# # Apply the function to each column in merged_no_std
+# merged_no_std <- merged_no_std %>%
+#  remove_outliers("B_actin") %>%
+#  remove_outliers("ELF_1a") %>%
+#  remove_outliers("GPX_1") %>%
+#  remove_outliers("NRF_1") %>%
+#  remove_outliers("CAT") %>%
+#  remove_outliers("SOD") %>%
+#  remove_outliers("TNF_a") %>%
+#  remove_outliers("S100")
+#  
+# # Display the cleaned dataframe
+# print(merged_no_std)
+
+```
+
+
+
+```{r}
+# Assuming merged_no_std is your tibble
+# Group by Sample and calculate the mean and coefficient of variance for each gene expression column
+avg_cq <- merged_no_std %>%
+  group_by(Sample) %>%
+  summarize(
+    SampleID = first(SampleID),
+    Diet = first(Diet),
+    Protein = first(Protein),
+    B_actin_mean = mean(B_actin, na.rm = TRUE),
+    B_actin_cv = (sd(B_actin, na.rm = TRUE) / mean(B_actin, na.rm = TRUE)) * 100,
+    ELF_1a_mean = mean(ELF_1a, na.rm = TRUE),
+    ELF_1a_cv = (sd(ELF_1a, na.rm = TRUE) / mean(ELF_1a, na.rm = TRUE)) * 100,
+    GPX_1_mean = mean(GPX_1, na.rm = TRUE),
+    GPX_1_cv = (sd(GPX_1, na.rm = TRUE) / mean(GPX_1, na.rm = TRUE)) * 100,
+    NRF_1_mean = mean(NRF_1, na.rm = TRUE),
+    NRF_1_cv = (sd(NRF_1, na.rm = TRUE) / mean(NRF_1, na.rm = TRUE)) * 100,
+    CAT_mean = mean(CAT, na.rm = TRUE),
+    CAT_cv = (sd(CAT, na.rm = TRUE) / mean(CAT, na.rm = TRUE)) * 100,
+    SOD_mean = mean(SOD, na.rm = TRUE),
+    SOD_cv = (sd(SOD, na.rm = TRUE) / mean(SOD, na.rm = TRUE)) * 100,
+    TNF_a_mean = mean(TNF_a, na.rm = TRUE),
+    TNF_a_cv = (sd(TNF_a, na.rm = TRUE) / mean(TNF_a, na.rm = TRUE)) * 100,
+    S100_mean = mean(S100, na.rm = TRUE),
+    S100_cv = (sd(S100, na.rm = TRUE) / mean(S100, na.rm = TRUE)) * 100
+  )
+
+# Print the resulting data frame
+print(avg_cq)
+```
+
+```{r}
+pistachio_genes <- avg_cq %>% 
+  dplyr::select(SampleID, Sample, Diet, Protein, B_actin_mean, ELF_1a_mean, 
+                GPX_1_mean, NRF_1_mean, CAT_mean, SOD_mean, TNF_a_mean, S100_mean)
+```
+
+
+```{r}
+df <- pistachio_genes %>%
+  mutate(Plate = case_when(
+    Sample %in% paste0("T", 1:24, "A") ~ "Plate A",
+    Sample %in% paste0("T", 1:16, "B") ~ "Plate A",
+    Sample %in% c(paste0("T", 17:24, "B"), paste0("T", 1:24, "C")) ~ "Plate B",
+    TRUE ~ NA_character_
+  ))
+# View the first few rows of the data frame
+head(df)
+```
+
+```{r}
+df <- df %>%
+  mutate(
+    NRF_efficiency = ifelse(Plate == "Plate A", 94.17, 95.91),
+    S100_efficiency = ifelse(Plate == "Plate A", 102.58, 107.31),
+    TNF_efficiency = ifelse(Plate == "Plate A", 105.46, 106.68),
+    GPX1_efficiency = ifelse(Plate == "Plate A", 112.31, 100.68),
+    CAT_efficiency = ifelse(Plate == "Plate A", 95.23, 99.44),
+    SOD_efficiency = ifelse(Plate == "Plate A", 99.67, 106.18),
+    ELF_efficiency = ifelse(Plate == "Plate A", 95.95, 105.27),
+    BACTIN_efficiency = ifelse(Plate == "Plate A", 104.63, 104.11)
+  )
+
+```
+
+
+
+```{r}
+# Update efficiency columns
+df <- df %>%
+  mutate(across(ends_with("_efficiency"), ~ (. / 100) + 1))
+
+# View the updated dataframe
+print(df)
+
+```
+
+
+```{r}
+# Split the dataset into two subsets
+df_fishmeal <- df %>% filter(Protein == "Fish Meal")
+df_plantmeal <- df %>% filter(Protein == "Plant Meal")
+
+# Define the calibrator samples
+calibrator_fishmeal <- df_fishmeal %>% filter(Diet == "FM1")
+calibrator_plantmeal <- df_plantmeal %>% filter(Diet == "PM1")
+
+# Calculate delta Ct values for fish meal samples (calibrator - gene)
+df_fishmeal <- df_fishmeal %>%
+  mutate(
+    delta_Ct_GPX1 = mean(calibrator_fishmeal$GPX_1_mean) - GPX_1_mean,
+    delta_Ct_NRF = mean(calibrator_fishmeal$NRF_1_mean) - NRF_1_mean,
+    delta_Ct_CAT = mean(calibrator_fishmeal$CAT_mean) - CAT_mean,
+    delta_Ct_SOD = mean(calibrator_fishmeal$SOD_mean) - SOD_mean,
+    delta_Ct_TNF = mean(calibrator_fishmeal$TNF_a_mean) - TNF_a_mean,
+    delta_Ct_S100 = mean(calibrator_fishmeal$S100_mean) - S100_mean,
+    delta_Ct_B_actin = mean(calibrator_fishmeal$B_actin_mean, na.rm = TRUE) - B_actin_mean,
+    delta_Ct_ELF_1a = mean(calibrator_fishmeal$ELF_1a_mean, na.rm = TRUE) - ELF_1a_mean
+  )
+# Calculate delta Ct values for fish meal samples (calibrator - gene)
+df_plantmeal <- df_plantmeal %>%
+  mutate(
+    delta_Ct_GPX1 = mean(calibrator_plantmeal$GPX_1_mean) - GPX_1_mean,
+    delta_Ct_NRF = mean(calibrator_plantmeal$NRF_1_mean) - NRF_1_mean,
+    delta_Ct_CAT = mean(calibrator_plantmeal$CAT_mean) - CAT_mean,
+    delta_Ct_SOD = mean(calibrator_plantmeal$SOD_mean) - SOD_mean,
+    delta_Ct_TNF = mean(calibrator_plantmeal$TNF_a_mean) - TNF_a_mean,
+    delta_Ct_S100 = mean(calibrator_plantmeal$S100_mean) - S100_mean,
+    delta_Ct_B_actin = mean(calibrator_plantmeal$B_actin_mean, na.rm = TRUE) - B_actin_mean,
+    delta_Ct_ELF_1a = mean(calibrator_plantmeal$ELF_1a_mean, na.rm = TRUE) - ELF_1a_mean
+    )
+
+
+# Calculate Efficiency Corrected Relative Quantities (RQ) using the Pfaffl method
+df_fishmeal <- df_fishmeal %>%
+  mutate(
+    RQ_GPX1 = GPX1_efficiency^(delta_Ct_GPX1),
+    RQ_NRF = NRF_efficiency^(delta_Ct_NRF),
+    RQ_CAT = CAT_efficiency^(delta_Ct_CAT),
+    RQ_SOD = SOD_efficiency^(delta_Ct_SOD),
+    RQ_TNF = TNF_efficiency^(delta_Ct_TNF),
+    RQ_S100 = S100_efficiency^(delta_Ct_S100),
+    RQ_B_actin = BACTIN_efficiency^(delta_Ct_B_actin), # Use specific efficiency for B_actin
+    RQ_ELF_1a = ELF_efficiency^(delta_Ct_ELF_1a)    # Use specific efficiency for ELF_1a
+  )
+
+# Calculate Efficiency Corrected Relative Quantities (RQ) using the Pfaffl method
+df_plantmeal <- df_plantmeal %>%
+  mutate(
+    RQ_GPX1 = GPX1_efficiency^(delta_Ct_GPX1),
+    RQ_NRF = NRF_efficiency^(delta_Ct_NRF),
+    RQ_CAT = CAT_efficiency^(delta_Ct_CAT),
+    RQ_SOD = SOD_efficiency^(delta_Ct_SOD),
+    RQ_TNF = TNF_efficiency^(delta_Ct_TNF),
+    RQ_S100 = S100_efficiency^(delta_Ct_S100),
+    RQ_B_actin = BACTIN_efficiency^(delta_Ct_B_actin), # Use specific efficiency for B_actin
+    RQ_ELF_1a = ELF_efficiency^(delta_Ct_ELF_1a)    # Use specific efficiency for ELF_1a
+  )
+
+
+
+# Calculate geometric mean for df_fishmeal
+df_fishmeal <- df_fishmeal %>%
+  rowwise() %>%
+  mutate(
+    geo_mean_ref = exp(mean(log(c(RQ_B_actin, RQ_ELF_1a)), na.rm = TRUE))
+  ) %>%
+  ungroup()
+
+# Calculate geometric mean for df_plantmeal
+df_plantmeal <- df_plantmeal %>%
+  rowwise() %>%
+  mutate(
+    geo_mean_ref = exp(mean(log(c(RQ_B_actin, RQ_ELF_1a)), na.rm = TRUE))
+  ) %>%
+  ungroup()
+
+
+
+df_fishmeal <- df_fishmeal %>%
+  mutate(
+    RGE_GPX1 = RQ_GPX1/geo_mean_ref, 
+    RGE_NRF1 = RQ_NRF/geo_mean_ref, 
+    RGE_CAT1 = RQ_CAT/geo_mean_ref, 
+    RGE_SOD1 = RQ_SOD/geo_mean_ref, 
+    RGE_TNF1 = RQ_TNF/geo_mean_ref, 
+    RGE_S1001 = RQ_S100/geo_mean_ref,
+    RGE_B_ACTIN1 = RQ_B_actin/geo_mean_ref, 
+    RGE_ELF_1_A1 = RQ_ELF_1a/geo_mean_ref 
+)
+
+
+df_plantmeal <- df_plantmeal %>%
+  mutate(
+    RGE_GPX1 = RQ_GPX1/geo_mean_ref, 
+    RGE_NRF1 = RQ_NRF/geo_mean_ref, 
+    RGE_CAT1 = RQ_CAT/geo_mean_ref, 
+    RGE_SOD1 = RQ_SOD/geo_mean_ref, 
+    RGE_TNF1 = RQ_TNF/geo_mean_ref, 
+    RGE_S1001 = RQ_S100/geo_mean_ref,
+    RGE_B_ACTIN1 = RQ_B_actin/geo_mean_ref, 
+    RGE_ELF_1_A1 = RQ_ELF_1a/geo_mean_ref 
+)
+
+
+
+df_fishmeal <- df_fishmeal %>%
+  mutate(
+    RGE_GPX2 = RGE_GPX1/mean(df_fishmeal$RGE_GPX1[df_fishmeal$Diet == "FM1"]), 
+    RGE_NRF2 = RGE_NRF1/mean(df_fishmeal$RGE_NRF1[df_fishmeal$Diet == "FM1"]), 
+    RGE_CAT2 = RGE_CAT1/mean(df_fishmeal$RGE_CAT1[df_fishmeal$Diet == "FM1"]), 
+    RGE_SOD2 = RGE_SOD1/mean(df_fishmeal$RGE_SOD1[df_fishmeal$Diet == "FM1"]), 
+    RGE_TNF2 = RGE_TNF1/mean(df_fishmeal$RGE_TNF1[df_fishmeal$Diet == "FM1"]), 
+    RGE_S1002 = RGE_S1001/mean(df_fishmeal$RGE_S1001[df_fishmeal$Diet == "FM1"]),
+    RGE_B_ACTIN2 = RGE_B_ACTIN1/mean(df_fishmeal$RGE_B_ACTIN1[df_fishmeal$Diet == "FM1"]), 
+    RGE_ELF_1_A2 = RGE_ELF_1_A1/mean(df_fishmeal$RGE_ELF_1_A1[df_fishmeal$Diet == "FM1"]) 
+)
+
+
+
+
+df_plantmeal <- df_plantmeal %>%
+ mutate(
+  RGE_GPX2 = RGE_GPX1/mean(df_plantmeal$RGE_GPX1[df_plantmeal$Diet == "PM1"]), 
+  RGE_NRF2 = RGE_NRF1/mean(df_plantmeal$RGE_NRF1[df_plantmeal$Diet == "PM1"]), 
+  RGE_CAT2 = RGE_CAT1/mean(df_plantmeal$RGE_CAT1[df_plantmeal$Diet == "PM1"]), 
+  RGE_SOD2 = RGE_SOD1/mean(df_plantmeal$RGE_SOD1[df_plantmeal$Diet == "PM1"]), 
+  RGE_TNF2 = RGE_TNF1/mean(df_plantmeal$RGE_TNF1[df_plantmeal$Diet == "PM1"]), 
+  RGE_S1002 = RGE_S1001/mean(df_plantmeal$RGE_S1001[df_plantmeal$Diet == "PM1"]),
+  RGE_B_ACTIN2 = RGE_B_ACTIN1/mean(df_plantmeal$RGE_B_ACTIN1[df_plantmeal$Diet == "PM1"]), 
+  RGE_ELF_1_A2 = RGE_ELF_1_A1/mean(df_plantmeal$RGE_ELF_1_A1[df_plantmeal$Diet == "PM1"]) 
+)
+
+
+df_fishmeal <- df_fishmeal %>%
+  mutate(
+    RGE_GPX = RGE_GPX2, 
+    RGE_NRF = RGE_NRF2, 
+    RGE_CAT = RGE_CAT2, 
+    RGE_SOD = RGE_SOD2, 
+    RGE_TNF = RGE_TNF2, 
+    RGE_S100 = RGE_S1002,
+    RGE_B_ACTIN = RGE_B_ACTIN2, 
+    RGE_ELF_1_A = RGE_ELF_1_A2 
+  )
+
+
+df_plantmeal <- df_plantmeal %>%
+  mutate(
+    RGE_GPX = RGE_GPX2, 
+    RGE_NRF = RGE_NRF2, 
+    RGE_CAT = RGE_CAT2, 
+    RGE_SOD = RGE_SOD2, 
+    RGE_TNF = RGE_TNF2, 
+    RGE_S100 = RGE_S1002,
+    RGE_B_ACTIN = RGE_B_ACTIN2, 
+    RGE_ELF_1_A = RGE_ELF_1_A2 
+  )
+
+
+# Combine the results
+result <- bind_rows(df_fishmeal, df_plantmeal)
+
+
+```
+
+
+
+```{r}
+rge_result <- result %>% 
+  dplyr::select(Sample, Diet, Protein, RGE_B_ACTIN, RGE_ELF_1_A, RGE_GPX, 
+         RGE_NRF, RGE_CAT, RGE_SOD, RGE_TNF, RGE_S100
+  )
+```
+
+
+
+```{r}
+# Remove rows with NA values
+rge_result <- rge_result %>% drop_na()
+
+# View the updated dataframe
+head(rge_result)
+
+rge_result_clean <- rge_result
+
+write.csv(rge_result, file = "reg_result.csv")
+```
+
+GPX
+```{r}
+library(stats)
+library(ggplot2)
+library(dplyr)
+library(agricolae)
+library(cowplot)
+
+data <- filter(rge_result, Protein == "Fish Meal")
+data$Diet <- as.factor(data$Diet)
+str(data)
+attach(data)
+
+# Perform ANOVA
+aov.RGE_GPX <- aov(RGE_GPX ~ Diet)
+anova_result <- summary(aov.RGE_GPX)
+p_value <- anova_result[[1]]["Diet", "Pr(>F)"]
+
+# Perform LSD test
+LSD_A <- LSD.test(y = RGE_GPX,
+                  trt = Diet,
+                  DFerror = aov.RGE_GPX$df.residual,
+                  MSerror = deviance(aov.RGE_GPX)/aov.RGE_GPX$df.residual,
+                  alpha = 0.05,
+                  p.adj = "bonferroni",
+                  group = TRUE,
+                  console = TRUE)
+
+ascend_A <- LSD_A$groups %>%
+  rownames_to_column(var = "Diet") %>%
+  arrange(Diet)
+
+# Filter out non-significant letters
+if (p_value >= 0.05) {
+  ascend_A$groups <- ""
+}
+
+# Calculate mean and SE
+MeanSE_A <- data %>%
+  group_by(Diet) %>%
+  summarise(avg_A = mean(RGE_GPX),
+            se = sd(RGE_GPX) / sqrt(length(RGE_GPX)))
+
+# Create the plot
+plotD <- ggplot(MeanSE_A, aes(x = Diet, y = avg_A)) +
+  geom_bar(stat = "identity", color = "black", fill = "#0073C2FF", position = position_dodge(width = 0.9), width = 0.8) +
+  geom_errorbar(aes(ymax = avg_A + se, ymin = avg_A - se), position = position_dodge(width = 0.9), width = 0.25) +
+  geom_text(aes(x = Diet, y = avg_A + se, label = ascend_A$groups), position = position_dodge(width = 0.9), vjust = -0.5) +
+  annotate("text", x = 1, y = max(MeanSE_A$avg_A + MeanSE_A$se) + 1, label = paste("p-value:", format.pval(p_value, digits = 3)), hjust = 0.2, size = 5) +
+  labs(title = "Fish Meal", x = "", y = "GPX Relative gene expression") +
+  scale_y_continuous(breaks = seq(0, max(MeanSE_A$avg_A + MeanSE_A$se) + 1, by = 0.5), limits = c(0, max(MeanSE_A$avg_A + MeanSE_A$se) + 1)) +
+  theme_bw() + theme(     axis.text.x = element_text(angle = 45, hjust = 1, size = 14), axis.text.y = element_text(size = 14), axis.title = element_text(size = 14)) + scale_x_discrete(labels = c("0 % PSP", "0.5 % PSP", "1 % PSP", "2 % PSP")) +
+  theme(panel.grid.major = element_blank(), axis.title = element_text(size = 14), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"),
+        legend.position = "none")
+
+print(plotD)
+
+data2 <- filter(rge_result, Protein == "Plant Meal")
+data2$Diet <- as.factor(data2$Diet)
+str(data2)
+attach(data2)
+
+# Perform ANOVA
+aov.RGE_GPX2 <- aov(RGE_GPX ~ Diet, data = data2)
+anova_result2 <- summary(aov.RGE_GPX2)
+p_value2 <- anova_result2[[1]]["Diet", "Pr(>F)"]
+
+# Perform LSD test
+LSD_A2 <- LSD.test(y = data2$RGE_GPX,
+                  trt = data2$Diet,
+                  DFerror = aov.RGE_GPX2$df.residual,
+                  MSerror = deviance(aov.RGE_GPX2)/aov.RGE_GPX2$df.residual,
+                  alpha = 0.05,
+                  p.adj = "bonferroni",
+                  group = TRUE,
+                  console = TRUE)
+
+ascend_A2 <- LSD_A2$groups %>%
+  rownames_to_column(var = "Diet") %>%
+  arrange(Diet)
+
+# Filter out non-significant letters
+if (p_value2 >= 0.05) {
+  ascend_A2$groups <- ""
+}
+
+# Calculate mean and SE
+MeanSE_A2 <- data2 %>%
+  group_by(Diet) %>%
+  summarise(avg_A = mean(RGE_GPX),
+            se = sd(RGE_GPX) / sqrt(length(RGE_GPX)))
+
+# Create the plot
+plotD2 <- ggplot(MeanSE_A2, aes(x = Diet, y = avg_A)) +
+  geom_bar(stat = "identity", color = "black", fill = "#EFC000FF", position = position_dodge(width = 0.9), width = 0.8) +
+  geom_errorbar(aes(ymax = avg_A + se, ymin = avg_A - se), position = position_dodge(width = 0.9), width = 0.25) +
+  geom_text(aes(x = Diet, y = avg_A + se, label = ascend_A2$groups), position = position_dodge(width = 0.9), vjust = -0.5) +
+  annotate("text", x = 1, y = max(MeanSE_A2$avg_A + MeanSE_A2$se) + 1, label = paste("p-value:", format.pval(p_value2, digits = 3)), hjust = 0.2, size = 5) +
+  labs(title = "Plant Meal", x = "", y = "GPX Relative gene expression") +
+  scale_y_continuous(breaks = seq(0, max(MeanSE_A2$avg_A + MeanSE_A2$se) + 1, by = 0.5), limits = c(0, max(MeanSE_A2$avg_A + MeanSE_A2$se) + 1)) +
+  theme_bw() + theme(     axis.text.x = element_text(angle = 45, hjust = 1, size = 14), axis.text.y = element_text(size = 14), axis.title = element_text(size = 14)) + scale_x_discrete(labels = c("0 % PSP", "0.5 % PSP", "1 % PSP", "2 % PSP")) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"),
+        legend.position = "none")
+
+print(plotD2)
+
+
+```
+NRF
+```{r}
+data <- filter(rge_result, Protein == "Fish Meal")
+data$Diet <- as.factor(data$Diet)
+str(data)
+attach(data)
+
+# Perform ANOVA
+aov.RGE_NRF <- aov(RGE_NRF ~ Diet)
+anova_result <- summary(aov.RGE_NRF)
+p_value <- anova_result[[1]]["Diet", "Pr(>F)"]
+
+# Perform LSD test
+LSD_A <- LSD.test(y = RGE_NRF,
+                  trt = Diet,
+                  DFerror = aov.RGE_NRF$df.residual,
+                  MSerror = deviance(aov.RGE_NRF)/aov.RGE_NRF$df.residual,
+                  alpha = 0.05,
+                  p.adj = "bonferroni",
+                  group = TRUE,
+                  console = TRUE)
+
+ascend_A <- LSD_A$groups %>%
+  rownames_to_column(var = "Diet") %>%
+  arrange(Diet)
+
+# Filter out non-significant letters
+if (p_value >= 0.05) {
+  ascend_A$groups <- ""
+}
+
+# Calculate mean and SE
+MeanSE_A <- data %>%
+  group_by(Diet) %>%
+  summarise(avg_A = mean(RGE_NRF),
+            se = sd(RGE_NRF) / sqrt(length(RGE_NRF)))
+
+# Create the plot
+plotD3 <- ggplot(MeanSE_A, aes(x = Diet, y = avg_A)) +
+  geom_bar(stat = "identity", color = "black", fill = "#0073C2FF", position = position_dodge(width = 0.9), width = 0.8) +
+  geom_errorbar(aes(ymax = avg_A + se, ymin = avg_A - se), position = position_dodge(width = 0.9), width = 0.25) +
+  geom_text(aes(x = Diet, y = avg_A + se, label = ascend_A$groups), position = position_dodge(width = 0.9), vjust = -0.5) +
+  annotate("text", x = 1, y = max(MeanSE_A$avg_A + MeanSE_A$se) + 1, label = paste("p-value:", format.pval(p_value, digits = 3)), hjust = 0.2, size = 5) +
+  labs(title = "Fish Meal", x = "", y = expression(NRF-2~alpha~ "Relative gene expression")) +
+  scale_y_continuous(breaks = seq(0, max(MeanSE_A$avg_A + MeanSE_A$se) + 1, by = 0.5), limits = c(0, max(MeanSE_A$avg_A + MeanSE_A$se) + 1)) +
+  theme_bw() + theme(     axis.text.x = element_text(angle = 45, hjust = 1, size = 14), axis.text.y = element_text(size = 14), axis.title = element_text(size = 14)) + scale_x_discrete(labels = c("0 % PSP", "0.5 % PSP", "1 % PSP", "2 % PSP")) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"),
+        legend.position = "none")
+
+print(plotD3)
+
+data2 <- filter(rge_result, Protein == "Plant Meal")
+data2$Diet <- as.factor(data2$Diet)
+str(data2)
+attach(data2)
+
+# Perform ANOVA
+aov.RGE_NRF2 <- aov(RGE_NRF ~ Diet, data = data2)
+anova_result2 <- summary(aov.RGE_NRF2)
+p_value2 <- anova_result2[[1]]["Diet", "Pr(>F)"]
+
+# Perform LSD test
+LSD_A2 <- LSD.test(y = data2$RGE_NRF,
+                   trt = data2$Diet,
+                   DFerror = aov.RGE_NRF2$df.residual,
+                   MSerror = deviance(aov.RGE_NRF2)/aov.RGE_NRF2$df.residual,
+                   alpha = 0.05,
+                   p.adj = "bonferroni",
+                   group = TRUE,
+                   console = TRUE)
+
+ascend_A2 <- LSD_A2$groups %>%
+  rownames_to_column(var = "Diet") %>%
+  arrange(Diet)
+
+# Filter out non-significant letters
+if (p_value2 >= 0.05) {
+  ascend_A2$groups <- ""
+}
+
+# Calculate mean and SE
+MeanSE_A2 <- data2 %>%
+  group_by(Diet) %>%
+  summarise(avg_A = mean(RGE_NRF),
+            se = sd(RGE_NRF) / sqrt(length(RGE_NRF)))
+
+# Create the plot
+plotD4 <- ggplot(MeanSE_A2, aes(x = Diet, y = avg_A)) +
+  geom_bar(stat = "identity", color = "black", fill = "#EFC000FF", position = position_dodge(width = 0.9), width = 0.8) +
+  geom_errorbar(aes(ymax = avg_A + se, ymin = avg_A - se), position = position_dodge(width = 0.9), width = 0.25) +
+  geom_text(aes(x = Diet, y = avg_A + se, label = ascend_A2$groups), position = position_dodge(width = 0.9), vjust = -0.5) +
+  annotate("text", x = 1, y = max(MeanSE_A2$avg_A + MeanSE_A2$se) + 1, label = paste("p-value:", format.pval(p_value2, digits = 3)), hjust = 0.2, size = 5) +
+  labs(title = "Plant Meal", x = "", y = expression(NRF-2~alpha~ "Relative gene expression")) +
+  scale_y_continuous(breaks = seq(0, max(MeanSE_A2$avg_A + MeanSE_A2$se) + 1, by = 0.5), limits = c(0, max(MeanSE_A2$avg_A + MeanSE_A2$se) + 1)) +
+  theme_bw() + theme(     axis.text.x = element_text(angle = 45, hjust = 1, size = 14), axis.text.y = element_text(size = 14), axis.title = element_text(size = 14)) + scale_x_discrete(labels = c("0 % PSP", "0.5 % PSP", "1 % PSP", "2 % PSP")) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"),
+        legend.position = "none")
+
+print(plotD4)
+```
+
+CAT
+```{r}
+data <- filter(rge_result, Protein == "Fish Meal")
+data$Diet <- as.factor(data$Diet)
+str(data)
+attach(data)
+
+# Perform ANOVA
+aov.RGE_CAT <- aov(RGE_CAT ~ Diet)
+anova_result <- summary(aov.RGE_CAT)
+p_value <- anova_result[[1]]["Diet", "Pr(>F)"]
+
+# Perform LSD test
+LSD_A <- LSD.test(y = RGE_CAT,
+                  trt = Diet,
+                  DFerror = aov.RGE_CAT$df.residual,
+                  MSerror = deviance(aov.RGE_CAT)/aov.RGE_CAT$df.residual,
+                  alpha = 0.05,
+                  p.adj = "bonferroni",
+                  group = TRUE,
+                  console = TRUE)
+
+ascend_A <- LSD_A$groups %>%
+  rownames_to_column(var = "Diet") %>%
+  arrange(Diet)
+
+# Filter out non-significant letters
+if (p_value >= 0.05) {
+  ascend_A$groups <- ""
+}
+
+# Calculate mean and SE
+MeanSE_A <- data %>%
+  group_by(Diet) %>%
+  summarise(avg_A = mean(RGE_CAT),
+            se = sd(RGE_CAT) / sqrt(length(RGE_CAT)))
+
+# Create the plot
+plotD5 <- ggplot(MeanSE_A, aes(x = Diet, y = avg_A)) +
+  geom_bar(stat = "identity", color = "black", fill = "#0073C2FF", position = position_dodge(width = 0.9), width = 0.8) +
+  geom_errorbar(aes(ymax = avg_A + se, ymin = avg_A - se), position = position_dodge(width = 0.9), width = 0.25) +
+  geom_text(aes(x = Diet, y = avg_A + se, label = ascend_A$groups), position = position_dodge(width = 0.9), vjust = -0.5) +
+  annotate("text", x = 1, y = max(MeanSE_A$avg_A + MeanSE_A$se) + 1, label = paste("p-value:", format.pval(p_value, digits = 3)), hjust = 0.2, size = 5) +
+  labs(title = "Fish Meal", x = "", y = expression(CAT~ "Relative gene expression")) +
+  scale_y_continuous(breaks = seq(0, max(MeanSE_A$avg_A + MeanSE_A$se) + 1, by = 0.5), limits = c(0, max(MeanSE_A$avg_A + MeanSE_A$se) + 1)) +
+  theme_bw() + theme(     axis.text.x = element_text(angle = 45, hjust = 1, size = 14), axis.text.y = element_text(size = 14), axis.title = element_text(size = 14)) + scale_x_discrete(labels = c("0 % PSP", "0.5 % PSP", "1 % PSP", "2 % PSP")) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"),
+        legend.position = "none")
+
+print(plotD5)
+
+data2 <- filter(rge_result, Protein == "Plant Meal")
+data2$Diet <- as.factor(data2$Diet)
+str(data2)
+attach(data2)
+
+# Perform ANOVA
+aov.RGE_CAT2 <- aov(RGE_CAT ~ Diet, data = data2)
+anova_result2 <- summary(aov.RGE_CAT2)
+p_value2 <- anova_result2[[1]]["Diet", "Pr(>F)"]
+
+# Perform LSD test
+LSD_A2 <- LSD.test(y = data2$RGE_CAT,
+                   trt = data2$Diet,
+                   DFerror = aov.RGE_CAT2$df.residual,
+                   MSerror = deviance(aov.RGE_CAT2)/aov.RGE_CAT2$df.residual,
+                   alpha = 0.05,
+                   p.adj = "bonferroni",
+                   group = TRUE,
+                   console = TRUE)
+
+ascend_A2 <- LSD_A2$groups %>%
+  rownames_to_column(var = "Diet") %>%
+  arrange(Diet)
+
+# Filter out non-significant letters
+if (p_value2 >= 0.05) {
+  ascend_A2$groups <- ""
+}
+
+# Calculate mean and SE
+MeanSE_A2 <- data2 %>%
+  group_by(Diet) %>%
+  summarise(avg_A = mean(RGE_CAT),
+            se = sd(RGE_CAT) / sqrt(length(RGE_CAT)))
+
+# Create the plot
+plotD6 <- ggplot(MeanSE_A2, aes(x = Diet, y = avg_A)) +
+  geom_bar(stat = "identity", color = "black", fill = "#EFC000FF", position = position_dodge(width = 0.9), width = 0.8) +
+  geom_errorbar(aes(ymax = avg_A + se, ymin = avg_A - se), position = position_dodge(width = 0.9), width = 0.25) +
+  geom_text(aes(x = Diet, y = avg_A + se, label = ascend_A2$groups), position = position_dodge(width = 0.9), vjust = -0.5) +
+  annotate("text", x = 1, y = max(MeanSE_A2$avg_A + MeanSE_A2$se) + 1, label = paste("p-value:", format.pval(p_value2, digits = 3)), hjust = 0.2, size = 5) +
+  labs(title = "Plant Meal", x = "", y = expression(CAT ~ "Relative gene expression")) +
+  scale_y_continuous(breaks = seq(0, max(MeanSE_A2$avg_A + MeanSE_A2$se) + 1, by = 0.5), limits = c(0, max(MeanSE_A2$avg_A + MeanSE_A2$se) + 1)) +
+  theme_bw() + theme(     axis.text.x = element_text(angle = 45, hjust = 1, size = 14), axis.text.y = element_text(size = 14), axis.title = element_text(size = 14)) + scale_x_discrete(labels = c("0 % PSP", "0.5 % PSP", "1 % PSP", "2 % PSP")) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"),
+        legend.position = "none")
+
+print(plotD6)
+```
+
+SOD
+```{r}
+data <- filter(rge_result, Protein == "Fish Meal")
+data$Diet <- as.factor(data$Diet)
+str(data)
+attach(data)
+
+# Perform ANOVA
+aov.RGE_SOD <- aov(RGE_SOD ~ Diet)
+anova_result <- summary(aov.RGE_SOD)
+p_value <- anova_result[[1]]["Diet", "Pr(>F)"]
+
+# Perform LSD test
+LSD_A <- LSD.test(y = RGE_SOD,
+                  trt = Diet,
+                  DFerror = aov.RGE_SOD$df.residual,
+                  MSerror = deviance(aov.RGE_SOD)/aov.RGE_SOD$df.residual,
+                  alpha = 0.05,
+                  p.adj = "bonferroni",
+                  group = TRUE,
+                  console = TRUE)
+
+ascend_A <- LSD_A$groups %>%
+  rownames_to_column(var = "Diet") %>%
+  arrange(Diet)
+
+# Filter out non-significant letters
+if (p_value >= 0.05) {
+  ascend_A$groups <- ""
+}
+
+# Calculate mean and SE
+MeanSE_A <- data %>%
+  group_by(Diet) %>%
+  summarise(avg_A = mean(RGE_SOD),
+            se = sd(RGE_SOD) / sqrt(length(RGE_SOD)))
+
+# Create the plot
+plotD7 <- ggplot(MeanSE_A, aes(x = Diet, y = avg_A)) +
+  geom_bar(stat = "identity", color = "black", fill = "#0073C2FF", position = position_dodge(width = 0.9), width = 0.8) +
+  geom_errorbar(aes(ymax = avg_A + se, ymin = avg_A - se), position = position_dodge(width = 0.9), width = 0.25) +
+  geom_text(aes(x = Diet, y = avg_A + se, label = ascend_A$groups), position = position_dodge(width = 0.9), vjust = -0.5) +
+  annotate("text", x = 1, y = max(MeanSE_A$avg_A + MeanSE_A$se) + 1, label = paste("p-value:", format.pval(p_value, digits = 3)), hjust = 0.2, size = 5) +
+  labs(title = "Fish Meal", x = "", y = expression(SOD ~"Relative gene expression")) +
+  scale_y_continuous(breaks = seq(0, max(MeanSE_A$avg_A + MeanSE_A$se) + 1, by = 0.5), limits = c(0, max(MeanSE_A$avg_A + MeanSE_A$se) + 1)) +
+  theme_bw() + theme(     axis.text.x = element_text(angle = 45, hjust = 1, size = 14), axis.text.y = element_text(size = 14), axis.title = element_text(size = 14)) + scale_x_discrete(labels = c("0 % PSP", "0.5 % PSP", "1 % PSP", "2 % PSP")) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"),
+        legend.position = "none")
+
+print(plotD7)
+
+data2 <- filter(rge_result, Protein == "Plant Meal")
+data2$Diet <- as.factor(data2$Diet)
+str(data2)
+attach(data2)
+
+# Perform ANOVA
+aov.RGE_SOD2 <- aov(RGE_SOD ~ Diet, data = data2)
+anova_result2 <- summary(aov.RGE_SOD2)
+p_value2 <- anova_result2[[1]]["Diet", "Pr(>F)"]
+
+# Perform LSD test
+LSD_A2 <- LSD.test(y = data2$RGE_SOD,
+                   trt = data2$Diet,
+                   DFerror = aov.RGE_SOD2$df.residual,
+                   MSerror = deviance(aov.RGE_SOD2)/aov.RGE_SOD2$df.residual,
+                   alpha = 0.05,
+                   p.adj = "bonferroni",
+                   group = TRUE,
+                   console = TRUE)
+
+ascend_A2 <- LSD_A2$groups %>%
+  rownames_to_column(var = "Diet") %>%
+  arrange(Diet)
+
+# Filter out non-significant letters
+if (p_value2 >= 0.05) {
+  ascend_A2$groups <- ""
+}
+
+# Calculate mean and SE
+MeanSE_A2 <- data2 %>%
+  group_by(Diet) %>%
+  summarise(avg_A = mean(RGE_SOD),
+            se = sd(RGE_SOD) / sqrt(length(RGE_SOD)))
+
+# Create the plot
+plotD8 <- ggplot(MeanSE_A2, aes(x = Diet, y = avg_A)) +
+  geom_bar(stat = "identity", color = "black", fill = "#EFC000FF", position = position_dodge(width = 0.9), width = 0.8) +
+  geom_errorbar(aes(ymax = avg_A + se, ymin = avg_A - se), position = position_dodge(width = 0.9), width = 0.25) +
+  geom_text(aes(x = Diet, y = avg_A + se, label = ascend_A2$groups), position = position_dodge(width = 0.9), vjust = -0.5) +
+  annotate("text", x = 1, y = max(MeanSE_A2$avg_A + MeanSE_A2$se) + 1, label = paste("p-value:", format.pval(p_value2, digits = 3)), hjust = 0.2, size = 5) +
+  labs(title = "Plant Meal", x = "", y = expression(SOD ~"Relative gene expression")) +
+  scale_y_continuous(breaks = seq(0, max(MeanSE_A2$avg_A + MeanSE_A2$se) + 1, by = 0.5), limits = c(0, max(MeanSE_A2$avg_A + MeanSE_A2$se) + 1)) +
+  theme_bw() + theme(     axis.text.x = element_text(angle = 45, hjust = 1, size = 14), axis.text.y = element_text(size = 14), axis.title = element_text(size = 14)) + scale_x_discrete(labels = c("0 % PSP", "0.5 % PSP", "1 % PSP", "2 % PSP")) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"),
+        legend.position = "none")
+
+print(plotD8)
+```
+TNF
+```{r}
+data <- filter(rge_result, Protein == "Fish Meal")
+data$Diet <- as.factor(data$Diet)
+str(data)
+attach(data)
+
+# Perform ANOVA
+aov.RGE_TNF <- aov(RGE_TNF ~ Diet)
+anova_result <- summary(aov.RGE_TNF)
+p_value <- anova_result[[1]]["Diet", "Pr(>F)"]
+
+# Perform LSD test
+LSD_A <- LSD.test(y = RGE_TNF,
+                  trt = Diet,
+                  DFerror = aov.RGE_TNF$df.residual,
+                  MSerror = deviance(aov.RGE_TNF)/aov.RGE_TNF$df.residual,
+                  alpha = 0.05,
+                  p.adj = "bonferroni",
+                  group = TRUE,
+                  console = TRUE)
+
+ascend_A <- LSD_A$groups %>%
+  rownames_to_column(var = "Diet") %>%
+  arrange(Diet)
+
+# Filter out non-significant letters
+if (p_value >= 0.05) {
+  ascend_A$groups <- ""
+}
+
+# Calculate mean and SE
+MeanSE_A <- data %>%
+  group_by(Diet) %>%
+  summarise(avg_A = mean(RGE_TNF),
+            se = sd(RGE_TNF) / sqrt(length(RGE_TNF)))
+
+# Create the plot
+plotD9 <- ggplot(MeanSE_A, aes(x = Diet, y = avg_A)) +
+  geom_bar(stat = "identity", color = "black", fill = "#0073C2FF", position = position_dodge(width = 0.9), width = 0.8) +
+  geom_errorbar(aes(ymax = avg_A + se, ymin = avg_A - se), position = position_dodge(width = 0.9), width = 0.25) +
+  geom_text(aes(x = Diet, y = avg_A + se, label = ascend_A$groups), position = position_dodge(width = 0.9), vjust = -0.5) +
+  annotate("text", x = 1, y = max(MeanSE_A$avg_A + MeanSE_A$se) + 1, label = paste("p-value:", format.pval(p_value, digits = 3)), hjust = 0.2, size = 5) +
+  labs(title = "Fish Meal", x = "", y = expression(TNF-~alpha~ "Relative gene expression")) +
+  scale_y_continuous(breaks = seq(0, max(MeanSE_A$avg_A + MeanSE_A$se) + 1, by = 0.5), limits = c(0, max(MeanSE_A$avg_A + MeanSE_A$se) + 1)) +
+  theme_bw() + theme(     axis.text.x = element_text(angle = 45, hjust = 1, size = 14), axis.text.y = element_text(size = 14), axis.title = element_text(size = 14)) + scale_x_discrete(labels = c("0 % PSP", "0.5 % PSP", "1 % PSP", "2 % PSP")) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"),
+        legend.position = "none")
+
+print(plotD9)
+
+data2 <- filter(rge_result, Protein == "Plant Meal")
+data2$Diet <- as.factor(data2$Diet)
+str(data2)
+attach(data2)
+
+# Perform ANOVA
+aov.RGE_TNF2 <- aov(RGE_TNF ~ Diet, data = data2)
+anova_result2 <- summary(aov.RGE_TNF2)
+p_value2 <- anova_result2[[1]]["Diet", "Pr(>F)"]
+
+# Perform LSD test
+LSD_A2 <- LSD.test(y = data2$RGE_TNF,
+                   trt = data2$Diet,
+                   DFerror = aov.RGE_TNF2$df.residual,
+                   MSerror = deviance(aov.RGE_TNF2)/aov.RGE_TNF2$df.residual,
+                   alpha = 0.05,
+                   p.adj = "bonferroni",
+                   group = TRUE,
+                   console = TRUE)
+
+ascend_A2 <- LSD_A2$groups %>%
+  rownames_to_column(var = "Diet") %>%
+  arrange(Diet)
+
+# Filter out non-significant letters
+if (p_value2 >= 0.05) {
+  ascend_A2$groups <- ""
+}
+
+# Calculate mean and SE
+MeanSE_A2 <- data2 %>%
+  group_by(Diet) %>%
+  summarise(avg_A = mean(RGE_TNF),
+            se = sd(RGE_TNF) / sqrt(length(RGE_TNF)))
+
+# Create the plot
+plotD10 <- ggplot(MeanSE_A2, aes(x = Diet, y = avg_A)) +
+  geom_bar(stat = "identity", color = "black", fill = "#EFC000FF", position = position_dodge(width = 0.9), width = 0.8) +
+  geom_errorbar(aes(ymax = avg_A + se, ymin = avg_A - se), position = position_dodge(width = 0.9), width = 0.25) +
+  geom_text(aes(x = Diet, y = avg_A + se, label = ascend_A2$groups), position = position_dodge(width = 0.9), vjust = -0.5) +
+  annotate("text", x = 1, y = max(MeanSE_A2$avg_A + MeanSE_A2$se) + 1, label = paste("p-value:", format.pval(p_value2, digits = 3)), hjust = 0.2, size = 5) +
+  labs(title = "Plant Meal", x = "", y = expression(TNF-~alpha~ "Relative gene expression")) +
+  scale_y_continuous(breaks = seq(0, max(MeanSE_A2$avg_A + MeanSE_A2$se) + 1, by = 0.5), limits = c(0, max(MeanSE_A2$avg_A + MeanSE_A2$se) + 1)) +
+  theme_bw() + theme(     axis.text.x = element_text(angle = 45, hjust = 1, size = 14), axis.text.y = element_text(size = 14), axis.title = element_text(size = 14)) + scale_x_discrete(labels = c("0 % PSP", "0.5 % PSP", "1 % PSP", "2 % PSP")) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"),
+        legend.position = "none")
+
+print(plotD10)
+```
+
+S100
+```{r}
+data <- filter(rge_result, Protein == "Fish Meal")
+data$Diet <- as.factor(data$Diet)
+str(data)
+attach(data)
+
+# Perform ANOVA
+aov.RGE_S100 <- aov(RGE_S100 ~ Diet)
+anova_result <- summary(aov.RGE_S100)
+p_value <- anova_result[[1]]["Diet", "Pr(>F)"]
+
+# Perform LSD test
+LSD_A <- LSD.test(y = RGE_S100,
+                  trt = Diet,
+                  DFerror = aov.RGE_S100$df.residual,
+                  MSerror = deviance(aov.RGE_S100)/aov.RGE_S100$df.residual,
+                  alpha = 0.05,
+                  p.adj = "bonferroni",
+                  group = TRUE,
+                  console = TRUE)
+
+ascend_A <- LSD_A$groups %>%
+  rownames_to_column(var = "Diet") %>%
+  arrange(Diet)
+
+# Filter out non-significant letters
+if (p_value >= 0.05) {
+  ascend_A$groups <- ""
+}
+
+# Calculate mean and SE
+MeanSE_A <- data %>%
+  group_by(Diet) %>%
+  summarise(avg_A = mean(RGE_S100),
+            se = sd(RGE_S100) / sqrt(length(RGE_S100)))
+
+# Create the plot
+plotD11 <- ggplot(MeanSE_A, aes(x = Diet, y = avg_A)) +
+  geom_bar(stat = "identity", color = "black", fill = "#0073C2FF", position = position_dodge(width = 0.9), width = 0.8) +
+  geom_errorbar(aes(ymax = avg_A + se, ymin = avg_A - se), position = position_dodge(width = 0.9), width = 0.25) +
+  geom_text(aes(x = Diet, y = avg_A + se, label = ascend_A$groups), position = position_dodge(width = 0.9), vjust = -0.5) +
+  annotate("text", x = 1, y = max(MeanSE_A$avg_A + MeanSE_A$se) + 1, label = paste("p-value:", format.pval(p_value, digits = 3)), hjust = 0.2, size = 5) +
+  labs(title = "Fish Meal", x = "", y = expression(S100 ~ "Relative gene expression")) +
+  scale_y_continuous(breaks = seq(0, max(MeanSE_A$avg_A + MeanSE_A$se) + 1, by = 0.5), limits = c(0, max(MeanSE_A$avg_A + MeanSE_A$se) + 1)) +
+  theme_bw() + theme(     axis.text.x = element_text(angle = 45, hjust = 1, size = 14), axis.text.y = element_text(size = 14), axis.title = element_text(size = 14)) + scale_x_discrete(labels = c("0 % PSP", "0.5 % PSP", "1 % PSP", "2 % PSP")) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"),
+        legend.position = "none")
+
+print(plotD11)
+
+data2 <- filter(rge_result, Protein == "Plant Meal")
+data2$Diet <- as.factor(data2$Diet)
+str(data2)
+attach(data2)
+
+# Perform ANOVA
+aov.RGE_S1002 <- aov(RGE_S100 ~ Diet, data = data2)
+anova_result2 <- summary(aov.RGE_S1002)
+p_value2 <- anova_result2[[1]]["Diet", "Pr(>F)"]
+
+# Perform LSD test
+LSD_A2 <- LSD.test(y = data2$RGE_S100,
+                   trt = data2$Diet,
+                   DFerror = aov.RGE_S1002$df.residual,
+                   MSerror = deviance(aov.RGE_S1002)/aov.RGE_S1002$df.residual,
+                   alpha = 0.05,
+                   p.adj = "bonferroni",
+                   group = TRUE,
+                   console = TRUE)
+
+ascend_A2 <- LSD_A2$groups %>%
+  rownames_to_column(var = "Diet") %>%
+  arrange(Diet)
+
+# Filter out non-significant letters
+if (p_value2 >= 0.05) {
+  ascend_A2$groups <- ""
+}
+
+# Calculate mean and SE
+MeanSE_A2 <- data2 %>%
+  group_by(Diet) %>%
+  summarise(avg_A = mean(RGE_S100),
+            se = sd(RGE_S100) / sqrt(length(RGE_S100)))
+
+# Create the plot
+plotD12 <- ggplot(MeanSE_A2, aes(x = Diet, y = avg_A)) +
+  geom_bar(stat = "identity", color = "black", fill = "#EFC000FF", position = position_dodge(width = 0.9), width = 0.8) +
+  geom_errorbar(aes(ymax = avg_A + se, ymin = avg_A - se), position = position_dodge(width = 0.9), width = 0.25) +
+  geom_text(aes(x = Diet, y = avg_A + se, label = ascend_A2$groups), position = position_dodge(width = 0.9), vjust = -0.5) +
+  annotate("text", x = 1, y = max(MeanSE_A2$avg_A + MeanSE_A2$se) + 1, label = paste("p-value:", format.pval(p_value2, digits = 3)), hjust = 0.2, size = 5) +
+  labs(title = "Plant Meal", x = "", y = expression(S100 ~ "Relative gene expression")) +
+  scale_y_continuous(breaks = seq(0, max(MeanSE_A2$avg_A + MeanSE_A2$se) + 1, by = 0.5), limits = c(0, max(MeanSE_A2$avg_A + MeanSE_A2$se) + 1)) +
+  theme_bw() + theme(     axis.text.x = element_text(angle = 45, hjust = 1, size = 14), axis.text.y = element_text(size = 14), axis.title = element_text(size = 14)) + scale_x_discrete(labels = c("0 % PSP", "0.5 % PSP", "1 % PSP", "2 % PSP")) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"),
+        legend.position = "none")
+
+print(plotD12)
+```
+
+
+```{r}
+
+# Adjust the title font size
+adjust_title_font <- function(plot) {
+  plot + theme(plot.title = element_text(size = 10))
+}
+
+plotD <- adjust_title_font(plotD)
+plotD2 <- adjust_title_font(plotD2)
+plotD3 <- adjust_title_font(plotD3)
+plotD4 <- adjust_title_font(plotD4)
+plotD5 <- adjust_title_font(plotD5)
+plotD6 <- adjust_title_font(plotD6)
+plotD7 <- adjust_title_font(plotD7)
+plotD8 <- adjust_title_font(plotD8)
+plotD9 <- adjust_title_font(plotD9)
+plotD10 <- adjust_title_font(plotD10)
+plotD11 <- adjust_title_font(plotD11)
+plotD12 <- adjust_title_font(plotD12)
+
+# Combine the plots using cowplot and label them
+combined_plot <- plot_grid(
+  plotD,
+  plotD2+ theme(axis.title.y = element_blank()),
+  plotD3,
+  plotD4+ theme(axis.title.y = element_blank()),
+  plotD5,
+  plotD6+ theme(axis.title.y = element_blank()),
+  plotD7,
+  plotD8+ theme(axis.title.y = element_blank()),
+  plotD9,
+  plotD10+ theme(axis.title.y = element_blank()),
+  plotD11,
+  plotD12+ theme(axis.title.y = element_blank()),
+  labels = c("a", "","b","","c","","d","","e","","f",""),
+  ncol = 4, align = 'v'
+)
+
+# Add vertical and horizontal lines to divide the plots into sections and an outer line
+combined_plot_with_lines <- ggdraw(combined_plot) +
+  draw_line(x = c(0.5, 0.5), y = c(0, 1), color = "black", size = 1) +  # Vertical line
+  draw_line(x = c(0, 1), y = c(2/3, 2/3), color = "black", size = 1) +  # Horizontal line 1
+  draw_line(x = c(0, 1), y = c(1/3, 1/3), color = "black", size = 1) +  # Horizontal line 2
+  draw_line(x = c(0, 0), y = c(0, 1), color = "black", size = 1) +      # Outer left line
+  draw_line(x = c(1, 1), y = c(0, 1), color = "black", size = 1) +      # Outer right line
+  draw_line(x = c(0, 1), y = c(0, 0), color = "black", size = 1) +      # Outer bottom line
+  draw_line(x = c(0, 1), y = c(1, 1), color = "black", size = 1)        # Outer top line
+
+
+print(combined_plot_with_lines)
+
+
+# Save the final combined plot if needed
+ggsave("final_combined_plot.png", combined_plot_with_lines, height = 13.5, width = 12)
+
+```
+

@@ -1,0 +1,772 @@
+---
+title: "Pistachio Differential Abundance"
+author: "Mosope Abanikannda"
+date: "`r Sys.Date()`"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE)
+```
+
+
+```{r, include=FALSE}
+library(dada2); packageVersion("dada2")
+library(tidyverse)
+library(phyloseq)
+library(mia)
+library(lulu)
+library(msa)
+library(Biostrings)
+library(ggpubr)
+library(patchwork)
+library(multcomp)
+library(stats)
+library(tidyverse)
+library(ape)
+library(multcompView)
+library(forcats)
+library(vegan)
+library(broom)
+library(cowplot)
+library(ANCOMBC)
+library(DT)
+library(pheatmap)
+library(pairwiseAdonis)
+```
+
+```{r}
+ps <- readRDS("psPistClean.RDS")
+```
+
+```{r}
+
+library(phyloseq)
+library(vegan)
+
+
+physeq <- ps
+# Assuming you have a phyloseq object 'physeq'
+otu_matrix <- as(otu_table(physeq), "matrix")
+
+# Ensure the OTU table is in the correct orientation (samples as rows, taxa as columns)
+if (taxa_are_rows(physeq)) {
+  otu_matrix <- t(otu_matrix)
+}
+
+# Use the rarecurve function
+rarecurve(otu_matrix, step = 500, xlab = "Sample Size", ylab = "Taxa")
+
+```
+
+
+If normalize, not necessary so commented
+```{r}
+# library(DESeq2)
+# library(phyloseq)
+# 
+# # Load your data
+# # Assume `ps` is your phyloseq object
+# # Add a small constant to avoid zero counts
+# otu_table(ps) <- otu_table(ps) + 1
+# 
+# 
+# # Convert phyloseq object to DESeq2 object
+# dds <- phyloseq_to_deseq2(ps, ~ 1)
+# 
+# # Estimate size factors and dispersions
+# dds <- estimateSizeFactors(dds)
+# dds <- estimateDispersions(dds)
+# 
+# # Perform variance stabilizing transformation
+# vst_counts <- varianceStabilizingTransformation(dds, blind = TRUE)
+# 
+# # Create a new phyloseq object with transformed counts
+# vst_ps <- phyloseq(otu_table(assay(vst_counts), taxa_are_rows = TRUE), 
+#                        sample_data(ps), 
+#                        tax_table(ps))
+```
+ps object if normalized
+```{r}
+# ps <- vst_ps
+```
+
+
+```{r}
+# Extract the sample data from the phyloseq object
+sample_data_df <- as.data.frame(sample_data(ps))
+
+# Create a new column 'Protein' based on the values in 'Diet_Type'
+sample_data_df$Protein <- ifelse(sample_data_df$Diet_Type == "FM", "Fish Meal", 
+                                 ifelse(sample_data_df$Diet_Type == "PM", "Plant Meal", NA))
+
+# Create a new column 'Inclusion' based on the values in 'PSP_Inclusion'
+sample_data_df$Inclusion <- ifelse(sample_data_df$PSP_Inclusion == 1, "0 %",
+                                   ifelse(sample_data_df$PSP_Inclusion == 2, "0.5 %",
+                                   ifelse(sample_data_df$PSP_Inclusion == 3, "1 %",
+                                   ifelse(sample_data_df$PSP_Inclusion == 4, "2 %", NA))))
+
+# Assign the modified sample data back to the phyloseq object
+sample_data(ps) <- sample_data(sample_data_df)
+
+```
+
+```{r}
+AlphaData <- estimate_richness(ps, measures=c("Shannon", "Simpson", "Observed"))
+
+metaData <- data.frame(sample_data(ps))
+AlphaData$SampleID <- row.names(metaData)
+
+AlphaData <- merge(metaData, AlphaData, by = "SampleID", all=TRUE)
+head(AlphaData)
+
+AlphaData$PSP_Inclusion <- factor(AlphaData$PSP_Inclusion, levels=c(1,2,3,4))
+```
+
+
+
+```{r}
+library(ggplot2)
+library(ggpubr)
+library(patchwork)
+library(dplyr)
+library(multcompView)
+
+# Function to apply Tukey HSD test and get letters for annotations
+get_tukey_letters <- function(data) {
+  tukey_res <- TukeyHSD(aov(Observed ~ Diet, data = data))
+  # Extract the Tukey HSD results as a dataframe
+  tukey_df <- as.data.frame(tukey_res$Diet)
+  # Name the p-values vector with the comparison names for multcompLetters
+  comp_names <- rownames(tukey_res$Diet)
+  p_values <- tukey_df[, "p adj"]
+  names(p_values) <- comp_names
+  
+  # Use multcompLetters to generate significance letters
+  tukey_letters <- multcompLetters(p_values)
+  return(tukey_letters$Letters)
+}
+
+plot_list <- list()
+
+# Identify the first site to keep its legend
+first_site <- unique(AlphaData$Protein)[1]
+
+# Set colors for each diet
+colors <- c("FM1" = "#0073C2FF", "FM2" = "#0073C2FF", "FM3" = "#0073C2FF", "FM4" = "#0073C2FF",
+            "PM1" = "#EFC000FF", "PM2" = "#EFC000FF", "PM3" = "#EFC000FF", "PM4" = "#EFC000FF")
+
+# Create a list of unique Protein types in the desired order
+protein_order <- c("Fish Meal", "Plant Meal")
+
+# Loop through each unique Protein in the desired order
+for (site in protein_order) {
+  # Filter data for the current Protein
+  site_data <- AlphaData %>%
+    filter(Protein == site)
+  
+  # Arrange Diets
+  if (site == "Fish Meal") {
+    site_data$Diet <- factor(site_data$Diet, levels = c("FM1", "FM2", "FM3", "FM4"))
+  } else {
+    site_data$Diet <- factor(site_data$Diet, levels = c("PM1", "PM2", "PM3", "PM4"))
+  }
+
+  # Perform ANOVA without outliers
+  anova_result <- aov(Observed ~ Diet, data = site_data)
+  anova_pvalue <- summary(anova_result)[[1]]["Diet", "Pr(>F)"][1]
+  
+  # Get Tukey HSD letters
+  tukey_letters <- get_tukey_letters(site_data)
+  
+  # Create a summary data frame for the plot annotations
+  site_summary <- site_data %>%
+    group_by(Diet) %>%
+    summarize(avg_Observed = mean(Observed)) %>%
+    mutate(TukeyLetter = tukey_letters[as.character(Diet)])
+  
+  # Replace NA with an empty string
+  site_summary$TukeyLetter[is.na(site_summary$TukeyLetter)] <- ""
+  
+  # Check if all the Tukey letters are the same and if so, exclude them
+  unique_letters <- unique(site_summary$TukeyLetter)
+  if(length(unique_letters) == 1 && unique_letters != "") {
+    site_summary$TukeyLetter <- NA
+  }
+  
+  # Create the plot for the current Protein without plotting outliers
+  p <- ggboxplot(site_data, x = "Diet", y = "Observed", fill = "Diet",
+                 palette = colors,
+                 title = paste(site),
+                 outlier.shape = NA) +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
+          plot.title = element_text(size = 10, hjust = 0),
+          axis.title.x = element_blank(),
+          axis.title.y = element_text()) +  # Reduce the title size
+    annotate("text", x = 2, y = 1000, label = paste("p-value:", format.pval(anova_pvalue, digits = 4)),
+              hjust = 0.5, size = 4) +     
+    geom_text(data = site_summary, aes(x = Diet, y = avg_Observed, label = TukeyLetter),
+              nudge_x = -0.2, vjust = -7) +
+    scale_y_continuous(breaks = seq(0, 1000, by = 200), limits = c(0, 1000)) +
+    scale_x_discrete(labels = c("0 % PSP", "0.5% PSP", "1 % PSP", "2 % PSP"))
+  
+  # Conditionally add or remove the legend
+  if (site == first_site) {
+    p <- p + theme(legend.position = "none") + theme(axis.title.y = element_blank())
+  } else {
+    p <- p + theme(legend.position = "none")
+  }
+  
+  # Store the plot in the list
+  plot_list[[site]] <- p
+}
+
+# Reorder plot_list according to the desired order
+ordered_plot_list <- plot_list[protein_order]
+
+# Merge the plots side-by-side using patchwork
+combined_plot <- wrap_plots(ordered_plot_list, ncol = 2) +
+  plot_layout() & 
+  theme(panel.border = element_rect(color = "black", fill = NA))
+
+combined_plot
+```
+
+```{r}
+library(ggplot2)
+library(ggpubr)
+library(patchwork)
+library(dplyr)
+library(multcompView)
+
+# Function to apply Tukey HSD test and get letters for annotations
+get_tukey_letters <- function(data) {
+  tukey_res <- TukeyHSD(aov(Shannon ~ Diet, data = data))
+  # Extract the Tukey HSD results as a dataframe
+  tukey_df <- as.data.frame(tukey_res$Diet)
+  # Name the p-values vector with the comparison names for multcompLetters
+  comp_names <- rownames(tukey_res$Diet)
+  p_values <- tukey_df[, "p adj"]
+  names(p_values) <- comp_names
+  
+  # Use multcompLetters to generate significance letters
+  tukey_letters <- multcompLetters(p_values)
+  return(tukey_letters$Letters)
+}
+
+plot_list <- list()
+
+# Identify the first site to keep its legend
+first_site <- unique(AlphaData$Protein)[1]
+
+# Set colors for each diet
+colors <- c("FM1" = "#0073C2FF", "FM2" = "#0073C2FF", "FM3" = "#0073C2FF", "FM4" = "#0073C2FF",
+            "PM1" = "#EFC000FF", "PM2" = "#EFC000FF", "PM3" = "#EFC000FF", "PM4" = "#EFC000FF")
+
+# Create a list of unique Protein types in the desired order
+protein_order <- c("Fish Meal", "Plant Meal")
+
+# Loop through each unique Protein in the desired order
+for (site in protein_order) {
+  # Filter data for the current Protein
+  site_data <- AlphaData %>%
+    filter(Protein == site)
+  
+  # Arrange Diets
+  if (site == "Fish Meal") {
+    site_data$Diet <- factor(site_data$Diet, levels = c("FM1", "FM2", "FM3", "FM4"))
+  } else {
+    site_data$Diet <- factor(site_data$Diet, levels = c("PM1", "PM2", "PM3", "PM4"))
+  }
+  
+  # Perform ANOVA without outliers
+  anova_result <- aov(Shannon ~ Diet, data = site_data)
+  anova_pvalue <- summary(anova_result)[[1]]["Diet", "Pr(>F)"][1]
+  
+  # Get Tukey HSD letters
+  tukey_letters <- get_tukey_letters(site_data)
+  
+  # Create a summary data frame for the plot annotations
+  site_summary <- site_data %>%
+    group_by(Diet) %>%
+    summarize(avg_Shannon = mean(Shannon)) %>%
+    mutate(TukeyLetter = tukey_letters[as.character(Diet)])
+  
+  # Replace NA with an empty string
+  site_summary$TukeyLetter[is.na(site_summary$TukeyLetter)] <- ""
+  
+  # Check if all the Tukey letters are the same and if so, exclude them
+  unique_letters <- unique(site_summary$TukeyLetter)
+  if(length(unique_letters) == 1 && unique_letters != "") {
+    site_summary$TukeyLetter <- NA
+  }
+  
+  # Create the plot for the current Protein without plotting outliers
+  p <- ggboxplot(site_data, x = "Diet", y = "Shannon", fill = "Diet",
+                 palette = colors,
+                 title = paste(site),
+                 outlier.shape = NA) +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
+          plot.title = element_text(size = 10, hjust = 0),
+          axis.title.x = element_blank(),
+          axis.title.y = element_text()) +  # Reduce the title size
+    annotate("text", x = 2, y = 8, label = paste("p-value:", format.pval(anova_pvalue, digits = 4)),
+             hjust = 0.5, size = 4) +     
+    geom_text(data = site_summary, aes(x = Diet, y = avg_Shannon, label = TukeyLetter),
+              nudge_x = -0.2, vjust = -7) +
+    scale_y_continuous(breaks = seq(0, 8, by = 1), limits = c(0, 8)) +
+    scale_x_discrete(labels = c("0 % PSP", "0.5% PSP", "1 % PSP", "2 % PSP"))
+  
+  # Conditionally add or remove the legend
+  if (site == first_site) {
+    p <- p + theme(legend.position = "none") + theme(axis.title.y = element_blank())
+  } else {
+    p <- p + theme(legend.position = "none")
+  }
+  
+  # Store the plot in the list
+  plot_list[[site]] <- p
+}
+
+# Reorder plot_list according to the desired order
+ordered_plot_list <- plot_list[protein_order]
+
+# Merge the plots side-by-side using patchwork
+combined_plot2 <- wrap_plots(ordered_plot_list, ncol = 2) +
+  plot_layout() & 
+  theme(panel.border = element_rect(color = "black", fill = NA))
+
+combined_plot2
+```
+
+
+
+```{r}
+final_plot <- plot_grid(
+  combined_plot,
+  combined_plot2,
+  labels = c("a", "b"),
+  ncol = 2, align = 'v'
+)
+final_plot
+```
+
+```{r}
+# Add vertical and horizontal lines to divide the plots into sections and an outer line
+combined_plot_with_lines <- ggdraw(final_plot) +
+  draw_line(x = c(0.5, 0.5), y = c(0, 1), color = "black", size = 1) +  # Vertical line
+  draw_line(x = c(0, 0), y = c(0, 1), color = "black", size = 1) +      # Outer left line
+  draw_line(x = c(1, 1), y = c(0, 1), color = "black", size = 1) +      # Outer right line
+  draw_line(x = c(0, 1), y = c(0, 0), color = "black", size = 1) +      # Outer bottom line
+  draw_line(x = c(0, 1), y = c(1, 1), color = "black", size = 1)        # Outer top line
+```
+
+
+
+
+
+
+
+
+
+
+```{r}
+library(phyloseq)
+
+# Assuming ps is your original phyloseq object
+OTU3 = as.matrix(otu_table(ps), taxa_are_rows = FALSE)
+SAM3 = sample_data(ps)                
+TAX3 = as.matrix(tax_table(ps)) 
+
+# Assuming you have a phylogenetic tree named phy_tree3
+# Make sure it's properly aligned with the OTU IDs in OTU3
+
+# Creating a new phyloseq object with updated variable names and including the phylogenetic tree
+data_phylo3 <- phyloseq(otu_table(OTU3, taxa_are_rows = FALSE), 
+                        tax_table(TAX3), 
+                        sample_data(SAM3)) # Include your phylogenetic tree here
+
+# Filtering the new phyloseq object based on the specified criteria
+data_phylo_filt3 = filter_taxa(data_phylo3, function(x) sum(x > 2) > (0.11 * length(x)), TRUE)
+
+```
+
+
+
+
+
+```{r}
+set.seed(1782) # set seed for analysis reproducibility
+OTU_filt_rar3 = rarefy_even_depth(otu_table(data_phylo_filt3), rngseed = TRUE, replace = FALSE) # rarefy the raw data using Phyloseq package
+data_otu_filt_rar3 = data.frame(otu_table(OTU_filt_rar3)) # create a separated file
+data_phylo_filt_rar3 <- phyloseq(OTU_filt_rar3, TAX3, SAM3) # create a phyloseq object
+
+# calculate Bray-Curtis distance using the vegan package
+dist_bc3 <- as.matrix(vegdist(data_otu_filt_rar3, method = "bray")) 
+
+# a peek at the first five rows / columns
+dist_bc3[1:5, 1:5]
+```
+
+
+
+**Beta diversity for Field Microbiome Samples (Summer 2023) - weighted unifrac**
+  
+```{r}
+library(ggplot2)
+
+# calculate PCOA using Phyloseq package
+pcoa_bc3 = ordinate(data_phylo_filt_rar3, "PCoA", "bray") 
+
+pcoa_plot3 <- plot_ordination(data_phylo_filt_rar3, pcoa_bc3, color = "Inclusion",
+                              title = "Beta Diversity weighted unifrac") +
+  geom_point(size = 3) +
+  stat_ellipse(aes(color = Inclusion, group = Diet),
+               level = 0.97,  # Confidence level for the ellipse
+               linetype = "solid",  # Linetype for the ellipse border
+               size = 0.5) +  # Line size for the ellipse border
+  theme_bw() +  # Apply black and white theme
+  labs(color = "Inclusion") +  # Label for the legend
+  theme(panel.grid.major = element_blank(),  # Remove major grid lines
+        panel.grid.minor = element_blank(),  # Remove minor grid lines
+        panel.background = element_blank())  # Optional: Remove panel background
+
+# Display the plot
+print(pcoa_plot3)
+```
+
+**Beta diversity for Field Microbiome Samples (Summer 2023) - unweighted unifrac**
+```{r}
+# Uniform PCoA using the Phyloseq package with weighted UniFrac
+pcoa_bc3 = ordinate(data_phylo_filt_rar3, "PCoA", "bray") 
+
+# Modify the plot to facet wrap by Protein
+pcoa_plot3 <- plot_ordination(data_phylo_filt_rar3, pcoa_bc3, color = "Inclusion",
+                              title = "Beta Diversity- unweighted unifrac") +
+  geom_point(size = 3) +
+  stat_ellipse(aes(color = Inclusion, group = Diet),
+               level = 0.97,  # Confidence level for the ellipse
+               linetype = "solid",  # Linetype for the ellipse border
+               size = 0.5) +  # Line size for the ellipse border
+  facet_wrap(~ Protein) +  # Facet wrap by Protein
+  theme_bw() +  # Apply black and white theme
+  labs(color = "Inclusion") +  # Label for the legend
+  theme(panel.grid.major = element_blank(),  # Remove major grid lines
+        panel.grid.minor = element_blank(),  # Remove minor grid lines
+        panel.background = element_blank())  # Optional: Remove panel background
+
+# Display the plot
+print(pcoa_plot3)
+```
+
+
+
+**Beta diversity for Field Microbiome Samples (Summer 2023) - Bray Curtis**
+```{r}
+# Calculate PCoA using the Phyloseq package with weighted UniFrac
+pcoa_bc3 = ordinate(data_phylo_filt_rar3, "PCoA", "bray") 
+
+# Modify the plot to facet wrap by Protein
+pcoa_plot3 <- plot_ordination(data_phylo_filt_rar3, pcoa_bc3, color = "Inclusion",
+                              title = "Beta Diversity -Bray Curtis") +
+  geom_point(size = 3) +
+  stat_ellipse(aes(color = Inclusion, group = Diet),
+               level = 0.97,  # Confidence level for the ellipse
+               linetype = "solid",  # Linetype for the ellipse border
+               size = 0.5) +  # Line size for the ellipse border
+  facet_wrap(~ Protein) +  # Facet wrap by Protein
+  theme_bw() +  # Apply black and white theme
+  labs(color = "Inclusion") +  # Label for the legend
+  theme(panel.grid.major = element_blank(),  # Remove major grid lines
+        panel.grid.minor = element_blank(),  # Remove minor grid lines
+        panel.background = element_blank())  # Optional: Remove panel background
+
+# Display the plot
+print(pcoa_plot3)
+```
+
+
+```{r}
+AlphaData <- estimate_richness(ps, measures=c("Shannon", "Simpson", "Observed"))
+
+metaData <- data.frame(sample_data(ps))
+AlphaData$SampleID <- row.names(metaData)
+
+AlphaData <- merge(metaData, AlphaData, by = "SampleID", all=TRUE)
+head(AlphaData)
+
+AlphaData$PSP_Inclusion <- factor(AlphaData$PSP_Inclusion, levels=c(1,2,3,4))
+```
+
+
+**Adonis tests**
+  
+```{r}
+library(phyloseq)
+library(dplyr)
+
+# Assuming data_phylo_filt_rar3 is your phyloseq object
+# and AlphaData is a corresponding data frame with a Protein column
+
+
+SAM <- as.matrix(sample_data(ps))
+SAM <- as.data.frame(SAM)
+
+
+# Subset the phyloseq object by unique Proteins
+phyloseq_Fish_Meal <- subset_samples(data_phylo_filt_rar3, Protein == "Fish Meal")
+phyloseq_Plant_Meal <- subset_samples(data_phylo_filt_rar3, Protein == "Plant Meal")
+
+# Now split the AlphaData data frame by Protein
+alpha_Fish_Meal <- AlphaData %>% filter(Protein == "Fish Meal")
+alpha_Plant_Meal <- AlphaData %>% filter(Protein == "Plant Meal")
+
+# Calculate Unifrac distances for each subset
+dist_Fish_Meal <- phyloseq::distance(phyloseq_Fish_Meal, method = "bray")
+dist_Plant_Meal <- phyloseq::distance(phyloseq_Plant_Meal, method = "bray")
+
+rownames(alpha_Fish_Meal) <- labels(dist_Fish_Meal)
+rownames(alpha_Plant_Meal) <- labels(dist_Plant_Meal)
+# Assuming phyloseq_Fish Meal, phyloseq_Plant Meal, phyloseq_digesta are your subsetted phyloseq objects
+# and alpha_Fish Meal, alpha_Plant Meal, alpha_digesta are the corresponding data frames
+
+
+
+
+# Perform Adonis test for each Protein
+adonis_Fish_Meal <- adonis2(dist_Fish_Meal ~ Diet, data = alpha_Fish_Meal, permutations = 9999)
+adonis_Plant_Meal <- adonis2(dist_Plant_Meal ~ Diet, data = alpha_Plant_Meal, permutations = 9999)
+
+
+# Print the Adonis test results
+# print(adonis_Fish Meal)
+# print(adonis_Plant Meal)
+
+
+adonis_Fish_Meal_pvalue <- adonis_Fish_Meal$`Pr(>F)`[1]
+adonis_Plant_Meal_pvalue <- adonis_Plant_Meal$`Pr(>F)`[1]
+
+
+adonis_Fish_Meal_pvalue
+adonis_Plant_Meal_pvalue
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+**Beta diversity for Field Microbiome Samples (Summer 2023) - bray curtis with adonis pvalue**
+```{r}
+# Create a named vector of p-values
+pvalues <- c("Fish Meal" = adonis_Fish_Meal_pvalue, 
+             "Plant Meal" = adonis_Plant_Meal_pvalue)
+
+# Modify the plot to facet wrap by Protein
+pcoa_plot3 <- plot_ordination(data_phylo_filt_rar3, pcoa_bc3, color = "Inclusion", title = "Beta Diversity- Bray Curtis with adonis pvalues") +
+  geom_point(size = 3) +
+  stat_ellipse(aes(color = Inclusion, group = Diet),
+               level = 0.95, linetype = "solid", size = 0.2) +
+  facet_wrap(~ Protein, labeller = label_bquote(.(Protein)~" (p-value: " * .(formatC(pvalues[Protein])) * ")")) +
+  theme_bw() +
+  labs(color = "Inclusion") +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank())
+
+# Display the plot
+print(pcoa_plot3)
+
+```
+
+```{r}
+bd_fish <- betadisper(dist_Fish_Meal, alpha_Fish_Meal$Diet)
+anova(bd_fish)
+permutest(bd_fish, pairwise = TRUE)
+```
+
+```{r}
+bd_plant <- betadisper(dist_Plant_Meal, alpha_Plant_Meal$Diet)
+anova(bd_plant)
+permutest(bd_plant, pairwise = TRUE)
+```
+```{r}
+library(phyloseq)
+library(ggplot2)
+library(ggsci)
+
+# Create a named vector of p-values
+pvalues <- c("Fish Meal" = adonis_Fish_Meal_pvalue, 
+             "Plant Meal" = adonis_Plant_Meal_pvalue)
+
+# Custom labeller function
+custom_labeller <- function(variable, value) {
+  sapply(value, function(x) paste0(x, " (p-value: ", formatC(pvalues[x], format = "e", digits = 2), ")"))
+}
+
+# Modify the plot to facet wrap by Protein
+pcoa_plot3 <- plot_ordination(data_phylo_filt_rar3, pcoa_bc3, color = "Inclusion", title = "Beta Diversity - Bray Curtis with adonis p-values") +
+  geom_point(size = 3) +
+  stat_ellipse(aes(color = Inclusion, group = Diet),
+               level = 0.95, linetype = "solid", size = 0.5) +
+  facet_wrap(~ Protein, labeller = as_labeller(custom_labeller)) +
+  scale_color_jco() +  # Apply the jco color palette
+  theme_bw() +
+  labs(color = "Inclusion") +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        plot.title = element_text(size = 10))  # Reduce the title size
+
+# Display the plot
+print(pcoa_plot3)
+
+```
+
+
+
+
+```{r}
+pairwise_Fish_Meal <- pairwise.adonis(dist_Fish_Meal, factors = alpha_Fish_Meal$Diet, p.adjust.m = "BH")
+pairwise_Fish_Meal <- as.data.frame(pairwise_Fish_Meal)
+```
+
+
+
+```{r}
+# Extract specific comparisons
+fm1_comparisons <- list(
+  FM2_vs_FM1 = pairwise_Fish_Meal %>% filter(pairs == "FM2 vs FM1"),
+  FM3_vs_FM1 = pairwise_Fish_Meal %>% filter(pairs == "FM3 vs FM1"),
+  FM4_vs_FM1 = pairwise_Fish_Meal %>% filter(pairs == "FM4 vs FM1")
+)
+
+# Format the comparison results into a string
+fm1_comparisons_text <- lapply(fm1_comparisons, function(x) {
+  paste0("p.adj: ", formatC(x$p.adjusted, digits = 4))
+})
+
+# Combine the comparison texts into a single string
+comparison_text_combined <- paste(
+  "Pairwise ADONIS: \n",
+  "0.5% PSP vs 0% PSP:", fm1_comparisons_text$FM2_vs_FM1, "\n",
+  "1% PSP vs 0% PSP:", fm1_comparisons_text$FM3_vs_FM1, "\n",
+  "2% PSP vs 0% PSP:", fm1_comparisons_text$FM4_vs_FM1
+)
+
+# Create the base plot
+pcoa_plot3 <- plot_ordination(data_phylo_filt_rar3, pcoa_bc3, color = "Inclusion", title = "Beta Diversity - Bray Curtis with adonis pvalues") +
+  geom_point(size = 2) +
+  stat_ellipse(aes(color = Inclusion, group = Diet),
+               level = 0.95, linetype = "solid", size = 0.2) +
+  facet_wrap(~ Protein, labeller = labeller(Protein = function(x) paste0(x, " (p-value: ", formatC(pvalues[x]), ")"))) +
+  scale_color_jco() +  # Apply the jco color palette
+  theme_bw() +
+  theme(plot.title = element_text(size = 8)) +
+  labs(color = "Inclusion") +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank())
+
+# Add the combined annotation only to the "Fish Meal" facet with a border
+pcoa_plot3 <- pcoa_plot3 + 
+  geom_label(data = data.frame(Protein = "Fish Meal", x = 0.4, y = 0.73, label = comparison_text_combined), 
+             aes(x = x, y = y, label = label), 
+             inherit.aes = FALSE, hjust = 0, size = 2, fontface = "italic", label.size = 0.5, label.padding = unit(0.05, "lines"))
+
+# Display the plot
+print(pcoa_plot3)
+```
+
+
+```{r}
+library(ggplot2)
+library(phyloseq)
+library(ggpubr)
+library(dplyr)
+
+# Create a named vector of p-values
+pvalues <- c("Plant Meal" = adonis_Plant_Meal_pvalue, 
+             "Fish Meal" = adonis_Fish_Meal_pvalue)
+
+# Extract specific comparisons
+fm1_comparisons <- list(
+  FM2_vs_FM1 = pairwise_Fish_Meal %>% filter(pairs == "FM2 vs FM1"),
+  FM3_vs_FM1 = pairwise_Fish_Meal %>% filter(pairs == "FM3 vs FM1"),
+  FM4_vs_FM1 = pairwise_Fish_Meal %>% filter(pairs == "FM4 vs FM1")
+)
+
+# Format the comparison results into a string
+fm1_comparisons_text <- lapply(fm1_comparisons, function(x) {
+  paste0("p.adj: ", formatC(x$p.adjusted, digits = 4))
+})
+
+# Combine the comparison texts into a single string
+comparison_text_combined <- paste(
+  "Pairwise ADONIS: \n",
+  "0.5% vs 0% PSP:", fm1_comparisons_text$FM2_vs_FM1, "\n",
+  "1% vs 0% PSP:", fm1_comparisons_text$FM3_vs_FM1, "\n",
+  "2% vs 0% PSP:", fm1_comparisons_text$FM4_vs_FM1
+)
+
+# Add the permutest results
+permutest_text_combined <- paste(
+  "Pairwise Betadisper: \n",
+  "0.5% vs 0% PSP: p-val = 0.5881\n",
+  "1% vs 0% PSP: p-val = 0.6232\n",
+  "2% vs 0% PSP: p-val = 0.4150\n"
+)
+
+# Combine ADONIS and PERMUTEST results
+combined_text <- paste(comparison_text_combined, permutest_text_combined, sep = "\n\n")
+
+# Create the base plot
+pcoa_plot3 <- plot_ordination(data_phylo_filt_rar3, pcoa_bc3, color = "Inclusion", title = "Beta Diversity - Bray Curtis with adonis pvalues") +
+  geom_point(size = 2) +
+  stat_ellipse(aes(color = Inclusion, group = Diet),
+               level = 0.95, linetype = "solid", size = 0.2) +
+  facet_wrap(~ Protein, labeller = labeller(Protein = function(x) paste0(x, " (p-value: ", formatC(pvalues[x]), ")"))) +
+  scale_color_jco() +  # Apply the jco color palette
+  theme_bw() +
+  theme(plot.title = element_text(size = 8)) +
+  labs(color = "Inclusion") +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank())
+
+# Add the combined annotation only to the "Fish Meal" facet with a border
+pcoa_plot3 <- pcoa_plot3 + 
+  geom_label(data = data.frame(Protein = "Fish Meal", x = -2.0, y = 0.6, label = combined_text), 
+             aes(x = x, y = y, label = label), 
+             inherit.aes = FALSE, hjust = 0, size = 2.5, fontface = "bold", label.size = 0.5, label.padding = unit(0.05, "lines"))
+
+# Display the plot
+print(pcoa_plot3)
+
+```
+

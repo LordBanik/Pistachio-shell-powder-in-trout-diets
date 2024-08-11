@@ -1,0 +1,151 @@
+---
+title: "Pistachio TAC "
+author: "Mosope Abanikannda"
+date: "`r Sys.Date()`"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+```
+
+```{r}
+suppressMessages({
+library(agricolae)
+library(readr)
+library(readxl)
+library(tidyverse)
+library(cowplot)
+library(multcompView)
+})
+```
+
+phenolic
+```{r}
+# Convert Diet to factor
+phenolic <- read_xlsx("~/Pistachio_results/TAC/tac.xlsx")
+phenolic$Diet <- as.factor(phenolic$Diet)
+
+# Split the data by Protein
+phenolic_fishmeal <- filter(phenolic, Protein == "Fish Meal")
+phenolic_plantmeal <- filter(phenolic, Protein == "Plant Meal")
+
+# Function to perform ANOVA, Tukey HSD, and prepare plot data
+perform_anova_tukey <- function(data, gene) {
+  aov_result <- aov(as.formula(paste(gene, "~ Diet")), data = data)
+  anova_result <- summary(aov_result)
+  
+  # Perform Tukey's HSD test
+  tukey_result <- HSD.test(aov_result, "Diet", group = TRUE)
+  
+  # Prepare data for plotting
+  MeanSE <- data %>%
+    group_by(Diet) %>%
+    summarise(avg = mean(get(gene)),
+              se = sd(get(gene)) / sqrt(length(get(gene))),
+              Q3 = quantile(get(gene), 0.75, na.rm = TRUE))
+  
+  ascend <- tukey_result$groups %>%
+    rownames_to_column(var = "Diet") %>%
+    arrange(Diet)
+  
+  return(list(anova = anova_result, tukey = tukey_result, MeanSE = MeanSE, ascend = ascend))
+}
+
+# Perform the analysis for CRE
+results_fishmeal <- perform_anova_tukey(phenolic_fishmeal, "CRE")
+results_plantmeal <- perform_anova_tukey(phenolic_plantmeal, "CRE")
+
+# Function to create the plot
+create_plot <- function(data, results, title, fill_color) {
+  # Merge Q3 values with ascend data for proper positioning
+  ascend_with_Q3 <- merge(results$ascend, results$MeanSE, by = "Diet")
+  
+  # Filter out non-significant letters
+  if (results$anova[[1]][["Pr(>F)"]][1] >= 0.05) {
+    ascend_with_Q3$groups <- ""
+  }
+  
+  p <- ggplot(data, aes(x = Diet, y = get("CRE"), fill = Diet)) +
+    geom_boxplot(outlier.shape = NA) +
+    labs(title = title, x = "", y = "") +
+    geom_text(data = ascend_with_Q3, aes(x = Diet, y = Q3 + 0.1, label = groups), vjust = -0.5) +
+    annotate("text", x = 0.5, y = 1100, label = paste("p-value:", format.pval(results$anova[[1]][["Pr(>F)"]][1], digits = 3)), hjust = 0, size = 5) +
+    scale_fill_manual(values = fill_color) +
+    scale_y_continuous(breaks = seq(0, 1100, by = 100), limits = c(0, 1100)) +
+    theme_minimal() +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      legend.position = "none",
+      panel.grid = element_blank(),
+      axis.line = element_line(colour = "black"),
+      plot.title = element_text(size = 14),  # Adjust title size
+       plot.margin = unit(c(1, 1, 1, 1), "lines")  # Adjust margins
+    ) +
+    scale_x_discrete(labels = c("0 % PSP", "0.5 % PSP", "1 % PSP", "2 % PSP")) +
+    theme(panel.border = element_rect(colour = "black", fill = NA, size = 1))  # Add border
+  
+  return(p)
+}
+
+# Define unified color palette
+unified_colors <- c("FM1" = "#0073C2FF", "FM2" = "#0073C2FF", "FM3" = "#0073C2FF", "FM4" = "#0073C2FF",
+                    "PM1" = "#EFC000FF", "PM2" = "#EFC000FF", "PM3" = "#EFC000FF", "PM4" = "#EFC000FF")
+
+# Create plots for Fish Meal and Plant Meal
+plot_fishmeal <- create_plot(phenolic_fishmeal, results_fishmeal, "Fish Meal", unified_colors)
+plot_plantmeal <- create_plot(phenolic_plantmeal, results_plantmeal, "Plant Meal", unified_colors)
+
+# Add label to the Fish Meal plot
+plot_fishmeal <- plot_fishmeal + 
+  labs(y = "")
+
+# Combine the plots using cowplot and add unified labels
+combined_plot <- plot_grid(
+  plot_fishmeal + theme(axis.title.x = element_blank(), legend.position = "none") + theme(axis.text = element_text(size = 14)) + theme(axis.title.y = element_text(size = 14)),
+  plot_plantmeal + theme(axis.title.x = element_blank(), axis.title.y = element_blank(), legend.position = "none") + theme(axis.text = element_text(size = 14)),
+  labels = c("b", ""), ncol = 2, align = 'v'
+)
+
+# Add unified axis labels and legend
+combined_plot_with_labels <- ggdraw(combined_plot) + 
+  draw_label("", x = 0.5, y = 0, vjust = -1.5, size = 1, fontface = "bold") +
+  draw_label(expression("Total Antioxidant Capacity (CRE)"), x = -0.01, y = 0.5, angle = 90, vjust = 1.5, size = 13, fontface = "bold")
+
+# Add unified legend
+legend <- get_legend(
+  ggplot(phenolic, aes(x = Diet, y = CRE, fill = Protein)) +
+    geom_boxplot() +
+    scale_fill_manual(values = c("Fish Meal" = "#0073C2FF", "Plant Meal" = "#EFC000FF")) +
+    theme(legend.position = "bottom")
+)
+
+# Combine plot with legend
+final_plot2 <- plot_grid(combined_plot_with_labels, legend, ncol = 1, rel_heights = c(1, -0.02))
+
+# Print the combined plot
+print(final_plot2)
+
+ggsave("final_plot.png", final_plot, height = 4.5, width = 5)
+```
+
+
+
+
+```{r}
+cb <- plot_grid(final_plot, final_plot2, ncol = 2)
+```
+
+
+```{r}
+# Add vertical and horizontal lines to divide the plots into sections and an outer line
+combined_plot_with_lines <- ggdraw(cb) +
+  draw_line(x = c(0.5, 0.5), y = c(0, 1), color = "black", size = 1) +  # Vertical line
+  draw_line(x = c(0, 0), y = c(0, 1), color = "black", size = 1) +      # Outer left line
+  draw_line(x = c(1, 1), y = c(0, 1), color = "black", size = 1) +      # Outer right line
+  draw_line(x = c(0, 1), y = c(0, 0), color = "black", size = 1) +      # Outer bottom line
+  draw_line(x = c(0, 1), y = c(1, 1), color = "black", size = 1)        # Outer top line
+```
+

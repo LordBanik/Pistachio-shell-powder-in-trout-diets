@@ -1,0 +1,290 @@
+---
+title: "Untitled"
+author: "Mosope Abanikannda"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+```
+
+
+```{r}
+histology <- read.csv("~/Pistachio_results/histology.csv")
+```
+
+```{r}
+str(histology)
+```
+
+
+```{r}
+# Set seed for reproducibility
+set.seed(123)
+
+# Create a new data frame with 4 random replicates for each Diet
+histology <- histology %>%
+  group_by(Diet) %>%
+  sample_n(4)
+
+
+# View the new data frame
+head(histology)
+```
+
+Villi length
+```{r}
+library(stats)
+library(ggplot2)
+library(dplyr)
+library(agricolae)
+library(cowplot)
+
+data <- filter(histology, Protein == "Fish Meal")
+data$Diet <- as.factor(data$Diet)
+str(data)
+attach(data)
+
+# Perform ANOVA
+aov.Villi_length <- aov(Villi_length ~ Diet)
+anova_result <- summary(aov.Villi_length)
+p_value <- anova_result[[1]]["Diet", "Pr(>F)"]
+
+# Perform LSD test
+LSD_A <- LSD.test(y = Villi_length,
+                  trt = Diet,
+                  DFerror = aov.Villi_length$df.residual,
+                  MSerror = deviance(aov.Villi_length)/aov.Villi_length$df.residual,
+                  alpha = 0.05,
+                  p.adj = "bonferroni",
+                  group = TRUE,
+                  console = TRUE)
+
+ascend_A <- LSD_A$groups %>%
+  rownames_to_column(var = "Diet") %>%
+  arrange(Diet)
+
+# Filter out non-significant letters
+if (p_value >= 0.05) {
+  ascend_A$groups <- ""
+}
+
+# Calculate mean and SE
+MeanSE_A <- data %>%
+  group_by(Diet) %>%
+  summarise(avg_A = mean(Villi_length),
+            se = sd(Villi_length) / sqrt(length(Villi_length)))
+
+# Create the plot
+plotD <- ggplot(MeanSE_A, aes(x = Diet, y = avg_A)) +
+  geom_bar(stat = "identity", color = "black", fill = "#0073C2FF", position = position_dodge(width = 0.9), width = 0.8) +
+  geom_errorbar(aes(ymax = avg_A + se, ymin = avg_A - se), position = position_dodge(width = 0.9), width = 0.25) +
+  geom_text(aes(x = Diet, y = avg_A + se, label = ascend_A$groups), position = position_dodge(width = 0.9), vjust = -0.5) +
+  annotate("text", x = 1, y = max(MeanSE_A$avg_A + MeanSE_A$se) + 5, label = paste("p-value:", format.pval(p_value, digits = 3)), hjust = 0.2, size = 3) +
+  labs(title = "Fish Meal", x = "", y = "Villi length") +
+  scale_y_continuous(breaks = seq(0, max(MeanSE_A$avg_A + MeanSE_A$se) + 6, by = 100), limits = c(0, max(MeanSE_A$avg_A + MeanSE_A$se) + 6)) +
+  theme_bw() + theme(     axis.text.x = element_text(angle = 45, hjust = 1)) + scale_x_discrete(labels = c("0 % PSP", "0.5 % PSP", "1 % PSP", "2 % PSP")) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"),
+        legend.position = "none")
+
+print(plotD)
+
+data2 <- filter(histology, Protein == "Plant Meal")
+data2$Diet <- as.factor(data2$Diet)
+str(data2)
+attach(data2)
+
+# Perform ANOVA
+aov.Villi_length2 <- aov(Villi_length ~ Diet, data = data2)
+anova_result2 <- summary(aov.Villi_length2)
+p_value2 <- anova_result2[[1]]["Diet", "Pr(>F)"]
+
+# Perform LSD test
+LSD_A2 <- LSD.test(y = data2$Villi_length,
+                   trt = data2$Diet,
+                   DFerror = aov.Villi_length2$df.residual,
+                   MSerror = deviance(aov.Villi_length2)/aov.Villi_length2$df.residual,
+                   alpha = 0.05,
+                   p.adj = "bonferroni",
+                   group = TRUE,
+                   console = TRUE)
+
+ascend_A2 <- LSD_A2$groups %>%
+  rownames_to_column(var = "Diet") %>%
+  arrange(Diet)
+
+# Filter out non-significant letters
+if (p_value2 >= 0.05) {
+  ascend_A2$groups <- ""
+}
+
+# Calculate mean and SE
+MeanSE_A2 <- data2 %>%
+  group_by(Diet) %>%
+  summarise(avg_A = mean(Villi_length),
+            se = sd(Villi_length) / sqrt(length(Villi_length)))
+
+# Create the plot
+plotD2 <- ggplot(MeanSE_A2, aes(x = Diet, y = avg_A)) +
+  geom_bar(stat = "identity", color = "black", fill = "#EFC000FF", position = position_dodge(width = 0.9), width = 0.8) +
+  geom_errorbar(aes(ymax = avg_A + se, ymin = avg_A - se), position = position_dodge(width = 0.9), width = 0.25) +
+  geom_text(aes(x = Diet, y = avg_A + se, label = ascend_A2$groups), position = position_dodge(width = 0.9), vjust = -0.5) +
+  annotate("text", x = 1, y = max(MeanSE_A2$avg_A + MeanSE_A2$se) + 5, label = paste("p-value:", format.pval(p_value2, digits = 3)), hjust = 0.2, size = 3) +
+  labs(title = "Plant Meal", x = "", y = "Villi length") +
+  scale_y_continuous(breaks = seq(0, max(MeanSE_A2$avg_A + MeanSE_A2$se) + 6, by = 100), limits = c(0, max(MeanSE_A2$avg_A + MeanSE_A2$se) + 6)) +
+  theme_bw() + theme(     axis.text.x = element_text(angle = 45, hjust = 1)) + scale_x_discrete(labels = c("0 % PSP", "0.5 % PSP", "1 % PSP", "2 % PSP")) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"),
+        legend.position = "none")
+
+print(plotD2)
+
+```
+
+
+Villi width
+```{r}
+library(stats)
+library(ggplot2)
+library(dplyr)
+library(agricolae)
+library(cowplot)
+
+data <- filter(histology, Protein == "Fish Meal")
+data$Diet <- as.factor(data$Diet)
+str(data)
+attach(data)
+
+# Perform ANOVA
+aov.Villi_width <- aov(Villi_width ~ Diet)
+anova_result <- summary(aov.Villi_width)
+p_value <- anova_result[[1]]["Diet", "Pr(>F)"]
+
+# Perform LSD test
+LSD_A <- LSD.test(y = Villi_width,
+                  trt = Diet,
+                  DFerror = aov.Villi_width$df.residual,
+                  MSerror = deviance(aov.Villi_width)/aov.Villi_width$df.residual,
+                  alpha = 0.05,
+                  p.adj = "bonferroni",
+                  group = TRUE,
+                  console = TRUE)
+
+ascend_A <- LSD_A$groups %>%
+  rownames_to_column(var = "Diet") %>%
+  arrange(Diet)
+
+# Filter out non-significant letters
+if (p_value >= 0.05) {
+  ascend_A$groups <- ""
+}
+
+# Calculate mean and SE
+MeanSE_A <- data %>%
+  group_by(Diet) %>%
+  summarise(avg_A = mean(Villi_width),
+            se = sd(Villi_width) / sqrt(length(Villi_width)))
+
+# Create the plot
+plotD3 <- ggplot(MeanSE_A, aes(x = Diet, y = avg_A)) +
+  geom_bar(stat = "identity", color = "black", fill = "#0073C2FF", position = position_dodge(width = 0.9), width = 0.8) +
+  geom_errorbar(aes(ymax = avg_A + se, ymin = avg_A - se), position = position_dodge(width = 0.9), width = 0.25) +
+  geom_text(aes(x = Diet, y = avg_A + se, label = ascend_A$groups), position = position_dodge(width = 0.9), vjust = -0.5) +
+  annotate("text", x = 1, y = max(MeanSE_A$avg_A + MeanSE_A$se) + 5, label = paste("p-value:", format.pval(p_value, digits = 3)), hjust = 0.2, size = 3) +
+  labs(title = "Fish Meal", x = "", y = "Villi width") +
+  scale_y_continuous(breaks = seq(0, max(MeanSE_A$avg_A + MeanSE_A$se) + 6, by = 20), limits = c(0, max(MeanSE_A$avg_A + MeanSE_A$se) + 6)) +
+  theme_bw() + theme(     axis.text.x = element_text(angle = 45, hjust = 1)) + scale_x_discrete(labels = c("0 % PSP", "0.5 % PSP", "1 % PSP", "2 % PSP")) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"),
+        legend.position = "none")
+
+print(plotD3)
+
+data2 <- filter(histology, Protein == "Plant Meal")
+data2$Diet <- as.factor(data2$Diet)
+str(data2)
+attach(data2)
+
+# Perform ANOVA
+aov.Villi_width2 <- aov(Villi_width ~ Diet, data = data2)
+anova_result2 <- summary(aov.Villi_width2)
+p_value2 <- anova_result2[[1]]["Diet", "Pr(>F)"]
+
+# Perform LSD test
+LSD_A2 <- LSD.test(y = data2$Villi_width,
+                   trt = data2$Diet,
+                   DFerror = aov.Villi_width2$df.residual,
+                   MSerror = deviance(aov.Villi_width2)/aov.Villi_width2$df.residual,
+                   alpha = 0.05,
+                   p.adj = "bonferroni",
+                   group = TRUE,
+                   console = TRUE)
+
+ascend_A2 <- LSD_A2$groups %>%
+  rownames_to_column(var = "Diet") %>%
+  arrange(Diet)
+
+# Filter out non-significant letters
+if (p_value2 >= 0.05) {
+  ascend_A2$groups <- ""
+}
+
+# Calculate mean and SE
+MeanSE_A2 <- data2 %>%
+  group_by(Diet) %>%
+  summarise(avg_A = mean(Villi_width),
+            se = sd(Villi_width) / sqrt(length(Villi_width)))
+
+# Create the plot
+plotD4 <- ggplot(MeanSE_A2, aes(x = Diet, y = avg_A)) +
+  geom_bar(stat = "identity", color = "black", fill = "#EFC000FF", position = position_dodge(width = 0.9), width = 0.8) +
+  geom_errorbar(aes(ymax = avg_A + se, ymin = avg_A - se), position = position_dodge(width = 0.9), width = 0.25) +
+  geom_text(aes(x = Diet, y = avg_A + se, label = ascend_A2$groups), position = position_dodge(width = 0.9), vjust = -0.5) +
+  annotate("text", x = 1, y = max(MeanSE_A2$avg_A + MeanSE_A2$se) + 5, label = paste("p-value:", format.pval(p_value2, digits = 3)), hjust = 0.2, size = 3) +
+  labs(title = "Plant Meal", x = "", y = "Villi width") +
+  scale_y_continuous(breaks = seq(0, max(MeanSE_A2$avg_A + MeanSE_A2$se) + 6, by = 20), limits = c(0, max(MeanSE_A2$avg_A + MeanSE_A2$se) + 6)) +
+  theme_bw() + theme(     axis.text.x = element_text(angle = 45, hjust = 1)) + scale_x_discrete(labels = c("0 % PSP", "0.5 % PSP", "1 % PSP", "2 % PSP")) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"),
+        legend.position = "none")
+
+print(plotD4)
+
+```
+
+```{r}
+
+# Adjust the title font size
+adjust_title_font <- function(plot) {
+  plot + theme(plot.title = element_text(size = 10))
+}
+
+plotD <- adjust_title_font(plotD)
+plotD2 <- adjust_title_font(plotD2)
+plotD3 <- adjust_title_font(plotD3)
+plotD4 <- adjust_title_font(plotD4)
+
+# Combine the plots using cowplot and label them
+combined_plot <- plot_grid(
+  plotD,
+  plotD2+ theme(axis.title.y = element_blank()),
+  plotD3,
+  plotD4+ theme(axis.title.y = element_blank()),
+  labels = c("a", "","b",""),
+  ncol = 4, align = 'v'
+)
+
+# Add vertical and horizontal lines to divide the plots into sections and an outer line
+combined_plot_with_lines <- ggdraw(combined_plot) +
+  draw_line(x = c(0.5, 0.5), y = c(0, 1), color = "black", size = 1) +  # Vertical line
+  draw_line(x = c(0, 0), y = c(0, 1), color = "black", size = 1) +      # Outer left line
+  draw_line(x = c(1, 1), y = c(0, 1), color = "black", size = 1) +      # Outer right line
+  draw_line(x = c(0, 1), y = c(0, 0), color = "black", size = 1) +      # Outer bottom line
+  draw_line(x = c(0, 1), y = c(1, 1), color = "black", size = 1)        # Outer top line
+
+
+print(combined_plot_with_lines)
+```
+

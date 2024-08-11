@@ -1,0 +1,51 @@
+---
+title: "Untitled"
+author: "Mosope Abanikannda"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+
+```{r}
+library('tidyverse')
+library('phyloseq')
+library('lulu')
+library('ggpubr')
+library('vegan')
+library('mia')
+```
+
+
+```{r}
+ps <- readRDS('Pistachio16S_PSobject.RDS')
+ps
+ps <- prune_taxa(taxa_sums(ps) > 0, ps)
+ps
+```
+
+
+
+
+```{r}
+curated_result <- readRDS('LULUcurated_pistachio16S.RDS')
+```
+
+
+
+
+```{r}
+curated_result$curated_count
+curated_result$discarded_count
+head(curated_result$otu_map)
+head(curated_result$otu_map[2010:2015,])
+```
+
+
+```{r}
+psLULU <- ps
+psLULU
+otu_table(psLULU) <- otu_table(t(curated_result$curated_table), taxa_are_rows = FALSE)
+psLULU
+```
+
+
